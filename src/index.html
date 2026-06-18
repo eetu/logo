@@ -179,7 +179,7 @@
       // the canvas resolution lower and thin the particle budget.
       const coarse = window.matchMedia("(pointer: coarse)").matches;
       const DPR_CAP = coarse ? 1.25 : 1.5;
-      const PQ = coarse ? 0.4 : 1; // vapour budget multiplier
+      const PQ = coarse ? 0.4 : 0.6; // vapour budget multiplier
 
       // Soft vapour sprite (cryo fog) pre-rendered once.
       const vapor = document.createElement("canvas");
