@@ -1,0 +1,24 @@
+name: Automerge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Native GitHub auto-merge: GitHub squash-merges the PR once required checks
+    # pass. Only dependabot. Skip github-actions bumps — a squash merge re-authors
+    # the workflow-file change as GITHUB_TOKEN, which lacks the `workflows` scope
+    # and is rejected; merge those by hand after reviewing the CI change.
+    if: github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions')
+    steps:
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
