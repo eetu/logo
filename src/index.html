@@ -123,10 +123,6 @@
         p < 0.5
           ? lerpRGB(DEEP, ICE, p * 2)
           : lerpRGB(ICE, BRIGHT, (p - 0.5) * 2);
-      const circDist = (a, b) => {
-        const d = Math.abs(a - b) % 1;
-        return d > 0.5 ? 1 - d : d;
-      };
 
       // One entry per lit cell: grid pos, normalized polar coords in the square
       // display space, a stable random, glyphs, and a relief height (the frost
@@ -143,6 +139,11 @@
           let h = (c * 73856093) ^ (r * 19349663);
           h = (h ^ (h >>> 13)) >>> 0;
           const rnd = (h % 1000) / 1000;
+          // hemisphere normal for the frost dome: pole (+z) faces the viewer at
+          // the centre, tilting radially outward toward the rim. Drives specular.
+          const phi = rN * Math.PI * 0.5;
+          const sinPhi = Math.sin(phi);
+          const a2 = ang * Math.PI * 2;
           cells.push({
             c,
             r,
@@ -151,7 +152,10 @@
             rnd,
             u: ((c + 0.5) / COLS + (r + 0.5) / ROWS) / 2, // diagonal sweep coord
             reveal: 1 - rN + (rnd - 0.5) * 0.14, // frost from tips inward
-            relief: Math.cos(rN * Math.PI * 0.5), // 1 at centre → 0 at rim
+            relief: Math.cos(phi), // 1 at centre → 0 at rim
+            nx: sinPhi * Math.cos(a2),
+            ny: sinPhi * Math.sin(a2),
+            nz: Math.cos(phi),
             phase: rnd * Math.PI * 2,
             core: CORE[h % CORE.length],
             crystal: CRYSTAL[(h >>> 3) % CRYSTAL.length],
@@ -232,8 +236,9 @@
       window.addEventListener("resize", layout);
 
       const INTRO = 3.2; // frost-in seconds
-      const SWEEP = 14.0; // highlight rotation seconds
-      const BAND = 0.085; // angular width of the bright sweep
+      const SWEEP = 14.0; // light-orbit seconds
+      const LIGHT_EL = 1.0; // light elevation from the view axis (rad)
+      const SHINE = 18; // specular tightness — higher = tighter glint
 
       // periodic re-freeze: a thaw front rakes across the mark, melting the
       // frost at the leading edge and re-crystallizing it just behind.
@@ -287,6 +292,19 @@
         const sinP = Math.sin(pitch),
           cosP = Math.cos(pitch);
 
+        // directional specular: a light orbits the dome and the glint is its
+        // half-vector highlight (V = +z toward viewer), so the bright spot rakes
+        // across the 3-D surface. Coupled to yaw so parallax nudges the glint.
+        const Laz = sweep * Math.PI * 2 + yaw * 0.6;
+        const sinEl = Math.sin(LIGHT_EL);
+        let Hx = sinEl * Math.cos(Laz),
+          Hy = sinEl * Math.sin(Laz),
+          Hz = Math.cos(LIGHT_EL) + 1; // + view vector (0,0,1)
+        const Hlen = Math.hypot(Hx, Hy, Hz) || 1;
+        Hx /= Hlen;
+        Hy /= Hlen;
+        Hz /= Hlen;
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // cached cold glow, modulated by coverage + breathing via globalAlpha
@@ -326,9 +344,8 @@
             continue;
           }
           const appear = clamp((cov - cell.reveal) / 0.08, 0, 1);
-          const glint = reduced
-            ? 0
-            : smoothstep(BAND, 0, circDist(cell.ang, sweep));
+          const ndH = cell.nx * Hx + cell.ny * Hy + cell.nz * Hz;
+          const glint = reduced || ndH <= 0 ? 0 : Math.pow(ndH, SHINE);
           const tw = reduced
             ? 0
             : Math.pow(Math.max(0, Math.sin(t * 1.7 + cell.phase)), 14) * 0.7;
