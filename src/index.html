@@ -190,7 +190,15 @@
         dome = 0,
         glowR = 0,
         G = 0,
-        glowGrad = null;
+        glowGrad = null,
+        frame = 0; // render counter — used to throttle the painter sort
+
+      // parallax: pointer/tilt offset from centre (-1..1) and the eased camera
+      // angles actually fed to the projection each frame.
+      let pnx = 0,
+        pny = 0,
+        yawC = 0,
+        pitchC = 0;
 
       function layout() {
         vw = window.innerWidth;
@@ -217,6 +225,7 @@
         glowGrad.addColorStop(1, "rgba(20,40,80,0)");
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        frame = 0; // force a re-sort next frame (depth order changed)
       }
       layout();
       window.addEventListener("resize", layout);
@@ -243,9 +252,15 @@
         const sweep = (t / SWEEP) % 1;
         const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
 
-        // gentle left↔right camera pan (+ a touch of pitch for depth)
-        const yaw = reduced ? 0 : Math.sin(t * 0.45) * 0.18;
-        const pitch = reduced ? 0 : Math.sin(t * 0.33) * 0.05;
+        // camera = gentle autonomous drift + pointer/tilt parallax, eased so it
+        // glides rather than snaps. ease factor is dt-based → frame-rate stable.
+        const tgtYaw = reduced ? 0 : Math.sin(t * 0.45) * 0.12 + pnx * 0.33;
+        const tgtPitch = reduced ? 0 : Math.sin(t * 0.33) * 0.04 + pny * 0.16;
+        const ease = 1 - Math.exp(-dt * 6);
+        yawC += (tgtYaw - yawC) * ease;
+        pitchC += (tgtPitch - pitchC) * ease;
+        const yaw = yawC,
+          pitch = pitchC;
         const sinA = Math.sin(yaw),
           cosA = Math.cos(yaw);
         const sinP = Math.sin(pitch),
@@ -274,7 +289,9 @@
           cell.s = s;
           cell.z2 = z2;
         }
-        order.sort((a, b) => cells[b].z2 - cells[a].z2);
+        // depth order drifts slowly with the gentle yaw/pitch, so re-sort every
+        // few frames instead of every frame — imperceptible, ~85% less sort work
+        if (frame++ % 8 === 0) order.sort((a, b) => cells[b].z2 - cells[a].z2);
 
         // one font for the whole frame — per-glyph ctx.font is very costly
         ctx.font = `${fontSize}px ui-monospace, Menlo, monospace`;
@@ -439,7 +456,38 @@
         const a = new Audio(WOW_URL);
         a.volume = 0.7;
         a.play().catch(() => {});
+        // iOS gates deviceorientation behind a user-gesture permission prompt
+        const DOE = window.DeviceOrientationEvent;
+        if (DOE && typeof DOE.requestPermission === "function") {
+          DOE.requestPermission()
+            .then((s) => {
+              if (s === "granted")
+                window.addEventListener("deviceorientation", onTilt);
+            })
+            .catch(() => {});
+        }
       });
+
+      // --- parallax input: the gear leans toward the pointer (or device tilt) ---
+      if (!reduced) {
+        window.addEventListener("pointermove", (e) => {
+          pnx = clamp((e.clientX / vw - 0.5) * 2, -1, 1);
+          pny = clamp((e.clientY / vh - 0.5) * 2, -1, 1);
+        });
+        // ease back to centre when the cursor leaves the window
+        document.addEventListener("pointerleave", () => {
+          pnx = pny = 0;
+        });
+        // non-iOS browsers fire deviceorientation without a permission prompt
+        const DOE = window.DeviceOrientationEvent;
+        if (DOE && typeof DOE.requestPermission !== "function")
+          window.addEventListener("deviceorientation", onTilt);
+      }
+      function onTilt(e) {
+        if (e.gamma == null) return;
+        pnx = clamp(e.gamma / 35, -1, 1); // left↔right tilt
+        pny = clamp((e.beta - 45) / 35, -1, 1); // front↔back, 45° = neutral hold
+      }
       // warm the audio cache after first paint so the first click is snappy
       const preloadWow = () => {
         wowWarm = new Audio(WOW_URL);
