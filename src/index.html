@@ -144,6 +144,12 @@
           const phi = rN * Math.PI * 0.5;
           const sinPhi = Math.sin(phi);
           const a2 = ang * Math.PI * 2;
+          // crystalline fingers: frost reaches inward faster at some angles, so
+          // the freeze front is ragged rather than a clean radial ring
+          const fingers =
+            0.5 * Math.sin(a2 * 9) +
+            0.28 * Math.sin(a2 * 23 + 1.7) +
+            0.22 * Math.sin(a2 * 5 - 0.6);
           cells.push({
             c,
             r,
@@ -151,7 +157,7 @@
             ang,
             rnd,
             u: ((c + 0.5) / COLS + (r + 0.5) / ROWS) / 2, // diagonal sweep coord
-            reveal: 1 - rN + (rnd - 0.5) * 0.14, // frost from tips inward
+            reveal: 1 - rN + (rnd - 0.5) * 0.14 - fingers * 0.09, // tips inward
             relief: Math.cos(phi), // 1 at centre → 0 at rim
             nx: sinPhi * Math.cos(a2),
             ny: sinPhi * Math.sin(a2),
@@ -180,6 +186,20 @@
         vg.addColorStop(1, "rgba(150,190,240,0)");
         vc.fillStyle = vg;
         vc.fillRect(0, 0, 64, 64);
+      }
+
+      // Cold bloom sprite — a tight bright halo drawn additively over the
+      // brightest crystals.
+      const bloom = document.createElement("canvas");
+      bloom.width = bloom.height = 48;
+      {
+        const bc = bloom.getContext("2d");
+        const bg = bc.createRadialGradient(24, 24, 0, 24, 24, 24);
+        bg.addColorStop(0, "rgba(222,240,255,0.95)");
+        bg.addColorStop(0.5, "rgba(170,205,250,0.25)");
+        bg.addColorStop(1, "rgba(150,190,240,0)");
+        bc.fillStyle = bg;
+        bc.fillRect(0, 0, 48, 48);
       }
       const puffs = [];
       const shards = []; // bright ice bits that sparkle off and fall away
@@ -239,6 +259,7 @@
       const SWEEP = 14.0; // light-orbit seconds
       const LIGHT_EL = 1.0; // light elevation from the view axis (rad)
       const SHINE = 18; // specular tightness — higher = tighter glint
+      const BLOOM_TH = 0.5; // sparkle above this gets an additive halo
 
       // periodic re-freeze: a thaw front rakes across the mark, melting the
       // frost at the leading edge and re-crystallizing it just behind.
@@ -341,6 +362,7 @@
             ctx.globalAlpha = 0.05;
             ctx.fillStyle = "rgb(46,78,130)";
             ctx.fillText(cell.core, cell.sx, cell.sy);
+            cell.bloom = 0;
             continue;
           }
           const appear = clamp((cov - cell.reveal) / 0.08, 0, 1);
@@ -358,6 +380,7 @@
             evFlash = d < 0 ? smoothstep(EV_FW, 0, -d) : 0;
           }
           const sparkle = Math.max(glint, tw) * (1 - evMelt) + evFlash * 0.9;
+          cell.bloom = sparkle > BLOOM_TH ? sparkle - BLOOM_TH : 0;
           // depth shading: nearer (s>1) brighter, farther dimmer
           const depth = clamp((cell.s - 0.9) * 1.4, 0, 1);
           const lp = clamp(
@@ -383,6 +406,19 @@
             cell.sy,
           );
         }
+
+        // additive bloom: a cold halo over the brightest crystals
+        ctx.globalCompositeOperation = "lighter";
+        for (const i of order) {
+          const cell = cells[i];
+          const b = cell.bloom;
+          if (!b) continue;
+          const d = fontSize * (0.8 + b * 0.7);
+          ctx.globalAlpha = Math.min(0.5, b * 0.7);
+          ctx.drawImage(bloom, cell.sx - d, cell.sy - d, d * 2, d * 2);
+        }
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = 1;
 
         // --- cryo vapour: spills off the cold surface, drifts and sinks ---
         if (!reduced && cov > 0.35) {
@@ -503,18 +539,22 @@
       const FRAME = 1 / FPS;
       let prevT = 0;
       let acc = 0;
+      let animT = 0; // animation clock — only advances while we render
       let rafId = 0;
       function loop(ms) {
         rafId = requestAnimationFrame(loop);
-        const t = ms / 1000;
-        const dt = Math.min(0.05, t - prevT);
-        prevT = t;
+        const now = ms / 1000;
+        const dt = Math.min(0.05, now - prevT);
+        prevT = now;
+        animT += dt;
         acc += dt;
         if (acc < FRAME) return;
-        render(t, acc);
+        render(animT, acc);
         acc = 0;
       }
       function start() {
+        // resume from where the clock paused — prevT reset avoids a dt spike,
+        // animT persists so sweep/twinkle/event phase doesn't jump
         cancelAnimationFrame(rafId);
         prevT = performance.now() / 1000;
         acc = 0;
