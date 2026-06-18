@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>invinite — frozen mark</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: radial-gradient(
+          120% 120% at 50% 40%,
+          #0d1426 0%,
+          #080d1a 55%,
+          #05080f 100%
+        );
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        cursor: pointer;
+      }
+      #stage {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <script>
+      // Gear silhouette sampled from the invinite mark (right glyph), stretched
+      // 72×42 so it renders square once drawn with monospace cells.
+      const MASK = [
+        "000000000000000000000000000000000000000000000111111000000000000000000000",
+        "000000000000000000000000000000000000000011111111111000000000000000000000",
+        "000000000000000000000000000000000000111111111111111000000000000000000000",
+        "000000000000000000000000000000000111111111111111111000000000000000000000",
+        "000000000000000000000000000000011111111111111111100000000000000000000000",
+        "000000000000000000000000000001111111111111111100000000000000000000000000",
+        "000000000000000000000000000111111111111110000000000000000000000000000000",
+        "000000000000000000000000011111111111110000000000000000000000000000000000",
+        "000000000000000000000000111111111111111000000000000000000000000000000000",
+        "000000000000000000000011111111111111111111111000000000000000000000000000",
+        "000000000000000000000111111111111111111111111111110000000000000000000000",
+        "000000000000000000001111111111011111111111111111111100000000000000000000",
+        "011111100000000000011111111100011111111111111111111111100000000000000000",
+        "011111111000000000111111111100011111111111111111111111111000000000000000",
+        "011111111000000000111111111000000000000001111111111111111110000000000000",
+        "001111111100000001111111110000000000000000000001111111111111100000000000",
+        "001111111110000011111111110000000000000000000000000111111111110000000000",
+        "000111111110000011111111100000000000000000000000000001111111111100000000",
+        "000111111111000111111111100000000000000000000000111111111111111110000000",
+        "000011111111100111111111100000000000000000000000111111111111111111000000",
+        "000011111111110111111111100000000000000000000000111111111111111111100000",
+        "000001111111111111111111100000000000000000000000111111111101111111110000",
+        "000000111111111111111111100000000000000000000000111111111000111111111000",
+        "000000011111111111111111000000000000000000000001111111111000011111111000",
+        "000000000111111111110000000000000000000000000001111111111000011111111100",
+        "000000000011111111111100000000000000000000000001111111110000001111111110",
+        "000000000000111111111111100000000000000000000011111111110000000111111110",
+        "000000000000011111111111111111110000000000000011111111100000000111111110",
+        "000000000000000111111111111111111111111110000111111111000000000011111111",
+        "000000000000000001111111111111111111111110001111111110000000000000111111",
+        "000000000000000000001111111111111111111110011111111100000000000000000000",
+        "000000000000000000000001111111111111111111111111111000000000000000000000",
+        "000000000000000000000000000111111111111111111111110000000000000000000000",
+        "000000000000000000000000000000000011111111111111100000000000000000000000",
+        "000000000000000000000000000000000011111111111110000000000000000000000000",
+        "000000000000000000000000000000011111111111111100000000000000000000000000",
+        "000000000000000000000000000111111111111111110000000000000000000000000000",
+        "000000000000000000000001111111111111111111000000000000000000000000000000",
+        "000000000000000000000011111111111111111000000000000000000000000000000000",
+        "000000000000000000000111111111111111000000000000000000000000000000000000",
+        "000000000000000000000111111111110000000000000000000000000000000000000000",
+        "000000000000000000000111111000000000000000000000000000000000000000000000",
+      ];
+      const ROWS = MASK.length;
+      const COLS = MASK[0].length;
+
+      const CORE = ["+", "·", "*", "◦"];
+      const CRYSTAL = ["❆", "❅", "✦", "✳"];
+
+      // palette stops (steel → ice → bright), interpolated by a 0..1 lightness
+      const DEEP = [46, 78, 130];
+      const ICE = [150, 200, 240];
+      const BRIGHT = [232, 246, 255];
+
+      const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+      const mix = (a, b, t) => a + (b - a) * t;
+      const smoothstep = (e0, e1, x) => {
+        const t = clamp((x - e0) / (e1 - e0), 0, 1);
+        return t * t * (3 - 2 * t);
+      };
+      const lerpRGB = (a, b, t) => [
+        Math.round(mix(a[0], b[0], t)),
+        Math.round(mix(a[1], b[1], t)),
+        Math.round(mix(a[2], b[2], t)),
+      ];
+      const iceColor = (p) =>
+        p < 0.5
+          ? lerpRGB(DEEP, ICE, p * 2)
+          : lerpRGB(ICE, BRIGHT, (p - 0.5) * 2);
+      const circDist = (a, b) => {
+        const d = Math.abs(a - b) % 1;
+        return d > 0.5 ? 1 - d : d;
+      };
+
+      // One entry per lit cell: grid pos, normalized polar coords in the square
+      // display space, a stable random, glyphs, and a relief height (the frost
+      // domes toward the viewer) used for the pseudo-3D projection.
+      const cells = [];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (MASK[r][c] !== "1") continue;
+          const dx = (c + 0.5) / COLS - 0.5;
+          const dy = (r + 0.5) / ROWS - 0.5;
+          const rN = clamp(Math.hypot(dx, dy) / 0.5, 0, 1);
+          let ang = Math.atan2(dy, dx) / (Math.PI * 2);
+          if (ang < 0) ang += 1;
+          let h = (c * 73856093) ^ (r * 19349663);
+          h = (h ^ (h >>> 13)) >>> 0;
+          const rnd = (h % 1000) / 1000;
+          cells.push({
+            c,
+            r,
+            rN,
+            ang,
+            rnd,
+            reveal: 1 - rN + (rnd - 0.5) * 0.14, // frost from tips inward
+            relief: Math.cos(rN * Math.PI * 0.5), // 1 at centre → 0 at rim
+            phase: rnd * Math.PI * 2,
+            core: CORE[h % CORE.length],
+            crystal: CRYSTAL[(h >>> 3) % CRYSTAL.length],
+          });
+        }
+      }
+
+      const canvas = document.getElementById("stage");
+      const ctx = canvas.getContext("2d");
+      const reduced = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      // Soft vapour sprite (cryo fog) pre-rendered once.
+      const vapor = document.createElement("canvas");
+      vapor.width = vapor.height = 64;
+      {
+        const vc = vapor.getContext("2d");
+        const vg = vc.createRadialGradient(32, 32, 0, 32, 32, 32);
+        vg.addColorStop(0, "rgba(214,236,255,0.9)");
+        vg.addColorStop(0.4, "rgba(180,212,250,0.35)");
+        vg.addColorStop(1, "rgba(150,190,240,0)");
+        vc.fillStyle = vg;
+        vc.fillRect(0, 0, 64, 64);
+      }
+      const puffs = [];
+      const shards = []; // bright ice bits that sparkle off and fall away
+
+      let vw = 0,
+        vh = 0,
+        cellW = 0,
+        cellH = 0,
+        cx = 0,
+        cy = 0,
+        fontSize = 0,
+        focal = 0,
+        dome = 0,
+        glowR = 0,
+        G = 0,
+        glowGrad = null;
+
+      function layout() {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+        const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+        canvas.width = Math.round(vw * dpr);
+        canvas.height = Math.round(vh * dpr);
+        canvas.style.width = vw + "px";
+        canvas.style.height = vh + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        G = Math.min(vw, vh) * 0.62;
+        cellW = G / COLS;
+        cellH = G / ROWS;
+        fontSize = cellH * 1.04;
+        cx = vw / 2;
+        cy = vh / 2;
+        focal = G * 1.5; // perspective strength (larger = subtler)
+        dome = G * 0.16; // how far the frost bulges toward the camera
+        glowR = G * 0.8;
+        glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+        glowGrad.addColorStop(0, "rgba(70,130,210,0.16)");
+        glowGrad.addColorStop(0.5, "rgba(40,80,150,0.08)");
+        glowGrad.addColorStop(1, "rgba(20,40,80,0)");
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+      }
+      layout();
+      window.addEventListener("resize", layout);
+
+      const INTRO = 3.2; // frost-in seconds
+      const SWEEP = 14.0; // highlight rotation seconds
+      const BAND = 0.085; // angular width of the bright sweep
+
+      // Project a point (centred gear space, z toward camera = negative) through
+      // a yaw/pitch camera + perspective. Returns screen pos, scale and depth.
+      function project(px, py, z, sinA, cosA, sinP, cosP) {
+        const x1 = px * cosA + z * sinA;
+        const z1 = -px * sinA + z * cosA;
+        const y2 = py * cosP - z1 * sinP;
+        const z2 = py * sinP + z1 * cosP;
+        const s = focal / (focal + z2);
+        return { sx: cx + x1 * s, sy: cy + y2 * s, s, z2 };
+      }
+
+      const order = cells.map((_, i) => i); // reused draw-order buffer
+
+      function render(t, dt) {
+        const cov = reduced ? 1 : smoothstep(0, 1, clamp(t / INTRO, 0, 1));
+        const sweep = (t / SWEEP) % 1;
+        const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
+
+        // gentle left↔right camera pan (+ a touch of pitch for depth)
+        const yaw = reduced ? 0 : Math.sin(t * 0.45) * 0.18;
+        const pitch = reduced ? 0 : Math.sin(t * 0.33) * 0.05;
+        const sinA = Math.sin(yaw),
+          cosA = Math.cos(yaw);
+        const sinP = Math.sin(pitch),
+          cosP = Math.cos(pitch);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // cached cold glow, modulated by coverage + breathing via globalAlpha
+        ctx.globalAlpha = cov * breathe;
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+        ctx.globalAlpha = 1;
+
+        // project cells onto themselves (no per-frame allocations), sort far→near
+        for (const cell of cells) {
+          const px = (cell.c + 0.5 - COLS / 2) * cellW;
+          const py = (cell.r + 0.5 - ROWS / 2) * cellH;
+          const z = -cell.relief * dome + (cell.rnd - 0.5) * cellW * 0.6;
+          const x1 = px * cosA + z * sinA;
+          const z1 = -px * sinA + z * cosA;
+          const y2 = py * cosP - z1 * sinP;
+          const z2 = py * sinP + z1 * cosP;
+          const s = focal / (focal + z2);
+          cell.sx = cx + x1 * s;
+          cell.sy = cy + y2 * s;
+          cell.s = s;
+          cell.z2 = z2;
+        }
+        order.sort((a, b) => cells[b].z2 - cells[a].z2);
+
+        // one font for the whole frame — per-glyph ctx.font is very costly
+        ctx.font = `${fontSize}px ui-monospace, Menlo, monospace`;
+
+        for (const i of order) {
+          const cell = cells[i];
+          if (cov < cell.reveal) {
+            ctx.globalAlpha = 0.05;
+            ctx.fillStyle = "rgb(46,78,130)";
+            ctx.fillText(cell.core, cell.sx, cell.sy);
+            continue;
+          }
+          const appear = clamp((cov - cell.reveal) / 0.08, 0, 1);
+          const glint = reduced
+            ? 0
+            : smoothstep(BAND, 0, circDist(cell.ang, sweep));
+          const tw = reduced
+            ? 0
+            : Math.pow(Math.max(0, Math.sin(t * 1.7 + cell.phase)), 14) * 0.7;
+          const sparkle = Math.max(glint, tw);
+          // depth shading: nearer (s>1) brighter, farther dimmer
+          const depth = clamp((cell.s - 0.9) * 1.4, 0, 1);
+          const lp = clamp(
+            0.26 +
+              cell.rN * 0.2 +
+              (cell.rnd - 0.5) * 0.1 +
+              sparkle * 0.65 +
+              depth * 0.12,
+            0,
+            1,
+          );
+          const [rr, gg, bb] = iceColor(lp);
+          ctx.globalAlpha =
+            appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth);
+          ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+          ctx.fillText(
+            sparkle > 0.42 ? cell.crystal : cell.core,
+            cell.sx,
+            cell.sy,
+          );
+        }
+
+        // --- cryo vapour: spills off the cold surface, drifts and sinks ---
+        if (!reduced && cov > 0.35) {
+          const want = 36 * dt; // puffs/sec
+          for (
+            let n = 0;
+            n < want || Math.random() < want - Math.floor(want);
+            n++
+          ) {
+            if (n >= 200) break;
+            // bias toward the upper surface — vapour rises off the top
+            const a = cells[(Math.random() * cells.length) | 0];
+            const b = cells[(Math.random() * cells.length) | 0];
+            const src = a.r < b.r ? a : b;
+            const px = (src.c + 0.5 - COLS / 2) * cellW;
+            const py = (src.r + 0.5 - ROWS / 2) * cellH;
+            puffs.push({
+              x: px,
+              y: py,
+              z: -src.relief * dome - 6,
+              vx:
+                Math.sign(px || 1) * (5 + Math.random() * 16) +
+                (Math.random() - 0.5) * 10,
+              vy: -(6 + Math.random() * 16), // slight initial rise
+              life: 1,
+              ttl: 2.2 + Math.random() * 2,
+              size: G * 0.018,
+              sway: Math.random() * Math.PI * 2,
+              fade: 0,
+            });
+            if (puffs.length > 260) puffs.shift();
+          }
+        }
+
+        for (let i = puffs.length - 1; i >= 0; i--) {
+          const q = puffs[i];
+          q.vy += 26 * dt; // gravity — CO₂ fog is heavy, it pours down
+          q.sway += dt * 1.5;
+          q.x += (q.vx + Math.sin(q.sway) * 8) * dt;
+          q.y += q.vy * dt;
+          q.size += G * 0.05 * dt; // billow outward
+          q.life -= dt / q.ttl;
+          q.fade = Math.min(1, q.fade + dt * 4); // fade-in
+          if (q.life <= 0) {
+            puffs.splice(i, 1);
+            continue;
+          }
+          const p = project(q.x, q.y, q.z, sinA, cosA, sinP, cosP);
+          const d = q.size * p.s;
+          ctx.globalAlpha = clamp(q.life, 0, 1) * q.fade * 0.4;
+          ctx.drawImage(vapor, p.sx - d, p.sy - d, d * 2, d * 2);
+        }
+
+        // --- frost shards: bright bits chip off and sparkle as they fall away ---
+        if (
+          !reduced &&
+          cov > 0.5 &&
+          Math.random() < 2 * dt &&
+          shards.length < 140
+        ) {
+          const src = cells[(Math.random() * cells.length) | 0];
+          if (cov >= src.reveal) {
+            shards.push({
+              x: src.sx,
+              y: src.sy,
+              vx: (Math.random() - 0.5) * 45,
+              vy: -10 - Math.random() * 25, // small upward chip, then it falls
+              phase: Math.random() * Math.PI * 2,
+              glyph: src.crystal,
+            });
+          }
+        }
+        ctx.font = `${fontSize * 0.72}px ui-monospace, Menlo, monospace`;
+        for (let i = shards.length - 1; i >= 0; i--) {
+          const s = shards[i];
+          s.vy += 210 * dt; // gravity
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
+          if (s.y > vh + 24) {
+            shards.splice(i, 1);
+            continue;
+          }
+          const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
+          ctx.globalAlpha = twk;
+          ctx.fillStyle = "rgb(226,242,255)";
+          ctx.fillText(s.glyph, s.x, s.y);
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      // Throttle to a fixed frame rate — uncapped rAF burns CPU on 120Hz panels.
+      const FPS = 30;
+      const FRAME = 1 / FPS;
+      let prevT = 0;
+      let acc = 0;
+      let rafId = 0;
+      function loop(ms) {
+        rafId = requestAnimationFrame(loop);
+        const t = ms / 1000;
+        const dt = Math.min(0.05, t - prevT);
+        prevT = t;
+        acc += dt;
+        if (acc < FRAME) return;
+        render(t, acc);
+        acc = 0;
+      }
+      function start() {
+        cancelAnimationFrame(rafId);
+        prevT = performance.now() / 1000;
+        acc = 0;
+        rafId = requestAnimationFrame(loop);
+      }
+
+      // Click anywhere → anime "wow" (meme easter egg). The mp3 is a separate
+      // asset, fetched lazily so it never delays first paint. Single quoted ref
+      // (WOW_URL) so the single-file bundler inlines it just once.
+      const WOW_URL = "wow.mp3";
+      let wowWarm = null;
+      window.addEventListener("pointerdown", () => {
+        const a = new Audio(WOW_URL);
+        a.volume = 0.7;
+        a.play().catch(() => {});
+      });
+      // warm the audio cache after first paint so the first click is snappy
+      const preloadWow = () => {
+        wowWarm = new Audio(WOW_URL);
+        wowWarm.preload = "auto";
+      };
+      if ("requestIdleCallback" in window)
+        requestIdleCallback(preloadWow, { timeout: 2500 });
+      else setTimeout(preloadWow, 1500);
+
+      // pause when the tab/window isn't visible — no CPU in the background
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) cancelAnimationFrame(rafId);
+        else if (!reduced) start();
+      });
+
+      if (reduced) {
+        layout();
+        render(INTRO, 0);
+      } else {
+        start();
+      }
+    </script>
+  </body>
+</html>
