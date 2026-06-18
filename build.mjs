@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Bundle the logo into a single, self-contained, deployable HTML file.
-// Reads index.html, inlines every referenced asset (audio, images, fonts) as a
-// data: URI, and writes dist/index.html.
+// Reads src/index.html, inlines every referenced asset (audio, images, fonts)
+// as a data: URI, and writes dist/index.html.
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const SRC = join(ROOT, "index.html");
+const SRC_DIR = join(ROOT, "src");
+const SRC = join(SRC_DIR, "index.html");
 const OUT_DIR = join(ROOT, "dist");
 const OUT = join(OUT_DIR, "index.html");
 
@@ -27,18 +28,27 @@ const MIME = {
 };
 
 let html = readFileSync(SRC, "utf8");
-const assets = readdirSync(ROOT).filter((f) => MIME[extname(f).toLowerCase()]);
+
+// Walk src/ for any asset whose extension we know how to inline. Reference paths
+// in the HTML are relative to src/ (e.g. "assets/wow.mp3"), so match on that.
+const walk = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = join(dir, e.name);
+    return e.isDirectory() ? walk(full) : full;
+  });
+const assets = walk(SRC_DIR).filter((f) => MIME[extname(f).toLowerCase()]);
 
 let inlined = 0;
 for (const file of assets) {
-  const dq = `"${file}"`;
-  const sq = `'${file}'`;
+  const ref = relative(SRC_DIR, file).split(sep).join("/"); // posix path as used in HTML
+  const dq = `"${ref}"`;
+  const sq = `'${ref}'`;
   if (!html.includes(dq) && !html.includes(sq)) continue; // only if referenced
   const mime = MIME[extname(file).toLowerCase()];
-  const uri = `data:${mime};base64,${readFileSync(join(ROOT, file)).toString("base64")}`;
+  const uri = `data:${mime};base64,${readFileSync(file).toString("base64")}`;
   html = html.split(dq).join(`"${uri}"`).split(sq).join(`'${uri}'`);
   inlined++;
-  console.log(`  inlined ${file} → ${mime}`);
+  console.log(`  inlined ${ref} → ${mime}`);
 }
 
 mkdirSync(OUT_DIR, { recursive: true });

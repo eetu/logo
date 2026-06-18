@@ -11,10 +11,12 @@ container** so it can be deployed to Kubernetes, podman, or any host.
 
 ## Develop
 
-No install needed to run — open `index.html` directly, or serve it:
+The site lives in `src/` (`src/index.html` + `src/assets/`). No install needed
+to run — open `src/index.html` directly, or serve the folder over HTTP with any
+static server, e.g.:
 
 ```sh
-npm run serve        # http://localhost:8080  (python3 http.server)
+npx serve src        # or: python3 -m http.server 8080 --directory src
 ```
 
 Tooling (formatting) does need deps:
