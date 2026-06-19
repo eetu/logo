@@ -113,6 +113,7 @@ bloom.width = bloom.height = 48;
 const puffs = [];
 const shards = []; // bright ice bits that sparkle off and fall away
 let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
+const trail = []; // recent pointer path {x,y,t} — fading draw-gesture affordance
 let rainbow = false; // press R — recolour the ice with a swirling rainbow
 // rapid repeated hits spin the gear: each combo hit adds spin velocity,
 // which damps out — so a quick flurry whips it around 360°+ and settles.
@@ -636,6 +637,25 @@ function render(t, dt) {
       ctx.restore();
     }
   }
+
+  // fading finger trail — hints that drawing does something (drag to draw a
+  // circle for rainbow, swipe the Konami code). Points age out over ~0.5s.
+  while (trail.length && t - trail[0].t > 0.5) trail.shift();
+  if (trail.length > 1) {
+    ctx.lineWidth = Math.max(2, G * 0.013);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = rainbow ? "rgb(70,45,100)" : "rgb(226,242,255)";
+    for (let i = 1; i < trail.length; i++) {
+      const a = 1 - (t - trail[i].t) / 0.5;
+      if (a <= 0) continue;
+      ctx.globalAlpha = a * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+      ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 // Throttle to a fixed frame rate — uncapped rAF burns CPU on 120Hz panels.
@@ -668,56 +688,49 @@ function start() {
 // Click anywhere → anime "wow" (meme easter egg). The mp3 is imported so the
 // bundler inlines it into the single-file build.
 let wowWarm = null;
-// R → toggle rainbow mode (re-render once if motion is paused/reduced)
+// --- shared easter-egg triggers (keyboard + touch gestures) ---
+function toggleRainbow() {
+  rainbow = !rainbow;
+  document.body.style.background = rainbow ? LIGHT_BG : DARK_BG;
+  if (reduced) render(INTRO, 0);
+}
+function fireKonami() {
+  eruptStart = animT;
+  if (rainbow) unicornStart = animT; // rainbow mode → a unicorn leaps over
+  if (reduced) render(INTRO, 0);
+}
+
+// keyboard: R = rainbow, classic Konami = erupt
 const KONAMI = [
-  "ArrowUp",
-  "ArrowUp",
-  "ArrowDown",
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowLeft",
-  "ArrowRight",
-  "b",
-  "a",
-];
+  "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
+  "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a",
+]; // prettier-ignore
 window.addEventListener("keydown", (e) => {
-  if (e.key === "r" || e.key === "R") {
-    rainbow = !rainbow;
-    document.body.style.background = rainbow ? LIGHT_BG : DARK_BG;
-    if (reduced) render(INTRO, 0);
-  }
-  // Konami code → erupt the whole mark
+  if (e.key === "r" || e.key === "R") toggleRainbow();
   konamiAt =
     e.key === KONAMI[konamiAt] ? konamiAt + 1 : e.key === KONAMI[0] ? 1 : 0;
   if (konamiAt === KONAMI.length) {
     konamiAt = 0;
-    eruptStart = animT;
-    if (rainbow) unicornStart = animT; // rainbow mode → a unicorn leaps over
-    if (reduced) render(INTRO, 0);
+    fireKonami();
   }
 });
 
-window.addEventListener("pointerdown", (e) => {
+// a plain tap: wow + flakes, rapid-tap spin combo, double-tap vent
+function tap(x, y) {
   const a = new Audio(wowUrl);
   a.volume = 0.7;
   a.play().catch(() => {});
-  poke = { x: e.clientX, y: e.clientY }; // released as flakes next frame
-  // rapid-hit combo → spin: 3rd+ quick hit adds spin velocity
+  poke = { x, y }; // released as flakes next frame
   combo = animT - lastHit < 0.6 ? combo + 1 : 1;
   lastHit = animT;
   if (combo >= 3) spinVel += 14;
-  // double-tap → drill a magma vent at the nearest cell to the tap
-  if (
-    animT - lastTap < 0.32 &&
-    Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 40
-  ) {
+  if (animT - lastTap < 0.32 && Math.hypot(x - lastTapX, y - lastTapY) < 40) {
     let best = (G * 0.3) ** 2,
       bc = null;
     for (const cell of cells) {
-      const dx = cell.sx - e.clientX,
-        dy = cell.sy - e.clientY;
-      const dd = dx * dx + dy * dy;
+      const dx = cell.sx - x,
+        dy = cell.sy - y,
+        dd = dx * dx + dy * dy;
       if (dd < best) {
         best = dd;
         bc = cell;
@@ -728,34 +741,135 @@ window.addEventListener("pointerdown", (e) => {
     lastTap = -10; // consume so the next tap starts a fresh pair
   } else {
     lastTap = animT;
-    lastTapX = e.clientX;
-    lastTapY = e.clientY;
+    lastTapX = x;
+    lastTapY = y;
   }
-  // iOS gates deviceorientation behind a user-gesture permission prompt
-  const DOE = window.DeviceOrientationEvent;
-  if (DOE && typeof DOE.requestPermission === "function") {
-    DOE.requestPermission()
-      .then((s) => {
-        if (s === "granted")
-          window.addEventListener("deviceorientation", onTilt);
-      })
-      .catch(() => {});
+}
+
+// --- touch gestures: swipes spell the Konami code; a CW-then-CCW double loop
+// toggles rainbow (the fading trail, drawn in render, hints at it) ---
+const SWIPE = ["U", "U", "D", "D", "L", "R", "L", "R"];
+let swipeIdx = 0,
+  lastSwipe = -10;
+let gdown = false,
+  gx0 = 0,
+  gy0 = 0;
+const gpts = []; // current gesture path, for classification
+
+// CW ~360° then CCW ~360° (or vice-versa) in one drag — a deliberate "rewind"
+// loop. A single loop is too easy to fling off accidentally (the parallax tilt
+// invites circular motion); requiring the reversal makes it intentional.
+function isRewind(pts) {
+  if (pts.length < 16) return false;
+  let cx2 = 0,
+    cy2 = 0;
+  for (const p of pts) {
+    cx2 += p[0];
+    cy2 += p[1];
+  }
+  cx2 /= pts.length;
+  cy2 /= pts.length;
+  const F = Math.PI * 1.8; // ~324° counts as a full turn (tolerant)
+  let sweep = 0,
+    prev = Math.atan2(pts[0][1] - cy2, pts[0][0] - cx2);
+  let hi = 0,
+    lo = 0,
+    minAfterHi = 0,
+    maxAfterLo = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const ang = Math.atan2(pts[i][1] - cy2, pts[i][0] - cx2);
+    let d = ang - prev;
+    if (d > Math.PI) d -= 2 * Math.PI;
+    if (d < -Math.PI) d += 2 * Math.PI;
+    sweep += d;
+    prev = ang;
+    if (sweep > hi) ((hi = sweep), (minAfterHi = sweep));
+    if (sweep < lo) ((lo = sweep), (maxAfterLo = sweep));
+    if (sweep < minAfterHi) minAfterHi = sweep;
+    if (sweep > maxAfterLo) maxAfterLo = sweep;
+  }
+  // a peak then a return (CW→CCW), or a trough then a return (CCW→CW)
+  return (
+    (hi >= F && hi - minAfterHi >= F) || (-lo >= F && maxAfterLo - lo >= F)
+  );
+}
+
+window.addEventListener(
+  "pointerdown",
+  (e) => {
+    e.preventDefault();
+    gdown = true;
+    gx0 = e.clientX;
+    gy0 = e.clientY;
+    gpts.length = 0;
+    gpts.push([e.clientX, e.clientY]);
+    trail.push({ x: e.clientX, y: e.clientY, t: animT });
+    // iOS gates deviceorientation behind a user-gesture permission prompt
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function")
+      DOE.requestPermission()
+        .then((s) => {
+          if (s === "granted")
+            window.addEventListener("deviceorientation", onTilt);
+        })
+        .catch(() => {});
+  },
+  { passive: false },
+);
+
+window.addEventListener(
+  "pointermove",
+  (e) => {
+    if (!reduced) {
+      pnx = clamp((e.clientX / vw - 0.5) * 2, -1, 1); // gear leans toward pointer
+      pny = clamp((e.clientY / vh - 0.5) * 2, -1, 1);
+    }
+    if (gdown) {
+      e.preventDefault();
+      gpts.push([e.clientX, e.clientY]);
+      trail.push({ x: e.clientX, y: e.clientY, t: animT });
+      if (trail.length > 160) trail.shift();
+    }
+  },
+  { passive: false },
+);
+
+window.addEventListener("pointerup", (e) => {
+  if (!gdown) return;
+  gdown = false;
+  const dx = e.clientX - gx0,
+    dy = e.clientY - gy0,
+    dist = Math.hypot(dx, dy);
+  if (isRewind(gpts)) {
+    toggleRainbow(); // CW+CCW loop → rainbow
+  } else if (dist >= Math.min(vw, vh) * 0.08) {
+    // a swipe → next Konami direction
+    const dir =
+      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "R" : "L") : dy > 0 ? "D" : "U";
+    if (animT - lastSwipe > 1.5) swipeIdx = 0; // timeout resets the sequence
+    lastSwipe = animT;
+    swipeIdx =
+      dir === SWIPE[swipeIdx] ? swipeIdx + 1 : dir === SWIPE[0] ? 1 : 0;
+    if (swipeIdx === SWIPE.length) {
+      swipeIdx = 0;
+      fireKonami();
+    }
+  } else {
+    tap(e.clientX, e.clientY); // a tap
   }
 });
+window.addEventListener("pointercancel", () => {
+  gdown = false;
+});
 
-// --- parallax input: the gear leans toward the pointer (or device tilt) ---
-if (!reduced) {
-  window.addEventListener("pointermove", (e) => {
-    pnx = clamp((e.clientX / vw - 0.5) * 2, -1, 1);
-    pny = clamp((e.clientY / vh - 0.5) * 2, -1, 1);
-  });
-  // ease back to centre when the cursor leaves the window
-  document.addEventListener("pointerleave", () => {
-    pnx = pny = 0;
-  });
-  // non-iOS browsers fire deviceorientation without a permission prompt
+// ease parallax back to centre when the cursor leaves the window
+document.addEventListener("pointerleave", () => {
+  if (!reduced) pnx = pny = 0;
+});
+// non-iOS browsers fire deviceorientation without a permission prompt
+{
   const DOE = window.DeviceOrientationEvent;
-  if (DOE && typeof DOE.requestPermission !== "function")
+  if (!reduced && DOE && typeof DOE.requestPermission !== "function")
     window.addEventListener("deviceorientation", onTilt);
 }
 function onTilt(e) {

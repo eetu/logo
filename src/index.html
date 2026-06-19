@@ -19,6 +19,10 @@
       body {
         margin: 0;
         height: 100%;
+        /* block Safari swipe-back/forward, pull-to-refresh and scroll so
+           draw-gestures (circle / swipes) aren't hijacked by the browser */
+        overscroll-behavior: none;
+        touch-action: none;
       }
       body {
         background: radial-gradient(
@@ -35,6 +39,7 @@
       }
       #stage {
         display: block;
+        touch-action: none;
       }
     </style>
   </head>
