@@ -128,6 +128,29 @@
           ? lerpRGB(DEEP, ICE, p * 2)
           : lerpRGB(ICE, BRIGHT, (p - 0.5) * 2);
 
+      // rainbow easter egg (press R): light theme + pastel hue ramp
+      const DARK_BG =
+        "radial-gradient(120% 120% at 50% 40%, #0d1426 0%, #080d1a 55%, #05080f 100%)";
+      const LIGHT_BG =
+        "radial-gradient(120% 120% at 50% 40%, #f6f7fb 0%, #eceef6 55%, #e2e6f1 100%)";
+      const hue2 = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      const hslColor = (h, s, l) => {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return [
+          Math.round(hue2(p, q, h + 1 / 3) * 255),
+          Math.round(hue2(p, q, h) * 255),
+          Math.round(hue2(p, q, h - 1 / 3) * 255),
+        ];
+      };
+
       // molten palette (dark blood → red → bright red-orange) shown through the
       // crust where the magma bleeds up. Kept red — never reaches yellow.
       const HEAT_LO = [70, 6, 4];
@@ -195,18 +218,28 @@
       const DPR_CAP = coarse ? 1.25 : 1.5;
       const PQ = coarse ? 0.4 : 0.6; // vapour budget multiplier
 
-      // Soft vapour sprite (cryo fog) pre-rendered once.
-      const vapor = document.createElement("canvas");
-      vapor.width = vapor.height = 64;
-      {
-        const vc = vapor.getContext("2d");
+      // Soft vapour sprites (cryo fog) pre-rendered once — a cool one for the
+      // dark theme and a neutral grey one that reads as mist on the light theme.
+      function makeVapor(stops) {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 64;
+        const vc = cv.getContext("2d");
         const vg = vc.createRadialGradient(32, 32, 0, 32, 32, 32);
-        vg.addColorStop(0, "rgba(214,236,255,0.9)");
-        vg.addColorStop(0.4, "rgba(180,212,250,0.35)");
-        vg.addColorStop(1, "rgba(150,190,240,0)");
+        for (const [o, col] of stops) vg.addColorStop(o, col);
         vc.fillStyle = vg;
         vc.fillRect(0, 0, 64, 64);
+        return cv;
       }
+      const vapor = makeVapor([
+        [0, "rgba(214,236,255,0.9)"],
+        [0.4, "rgba(180,212,250,0.35)"],
+        [1, "rgba(150,190,240,0)"],
+      ]);
+      const vaporLight = makeVapor([
+        [0, "rgba(150,150,170,0.6)"],
+        [0.4, "rgba(140,140,165,0.25)"],
+        [1, "rgba(140,140,165,0)"],
+      ]);
 
       // Cold bloom sprite — a tight bright halo drawn additively over the
       // brightest crystals.
@@ -224,6 +257,7 @@
       const puffs = [];
       const shards = []; // bright ice bits that sparkle off and fall away
       let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
+      let rainbow = false; // press R — recolour the ice with a swirling rainbow
       // magma seeds for the current cycle — a few random points the lava pools
       // grow out from; re-rolled each cycle so the pattern moves around.
       let magmaCycle = -1;
@@ -378,10 +412,13 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // cached cold glow, modulated by coverage + breathing via globalAlpha
-        ctx.globalAlpha = cov * breathe;
-        ctx.fillStyle = glowGrad;
-        ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
-        ctx.globalAlpha = 1;
+        // (skipped in light/rainbow mode — a dark blue glow looks wrong on white)
+        if (!rainbow) {
+          ctx.globalAlpha = cov * breathe;
+          ctx.fillStyle = glowGrad;
+          ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+          ctx.globalAlpha = 1;
+        }
 
         // project cells onto themselves (no per-frame allocations), sort far→near
         for (const cell of cells) {
@@ -404,6 +441,8 @@
 
         // one font for the whole frame — per-glyph ctx.font is very costly
         ctx.font = `${fontSize}px ui-monospace, Menlo, monospace`;
+        ctx.lineWidth = Math.max(1, fontSize * 0.09); // glyph outline in rainbow
+        ctx.lineJoin = "round";
 
         for (const i of order) {
           const cell = cells[i];
@@ -470,32 +509,44 @@
             0,
             1,
           );
+          // base surface colour — frost palette, or a swirling pastel rainbow in
+          // the R-mode easter egg (hue sweeps around the gear + over time)
+          const hue = (cell.ang + cell.rN * 0.25 + t * 0.12) % 1;
+          const base = rainbow
+            ? hslColor(hue, 0.5, clamp(0.46 + lp * 0.28, 0, 0.74))
+            : iceColor(lp);
           let rr, gg, bb;
           if (heat > 0.001) {
-            const [ir, ig, ib] = iceColor(lp);
-            const [hr, hg, hb] = heatColor(clamp(0.18 + heat * 0.8, 0, 1));
+            // magma follows the theme: red normally, but a vivid same-hue flare
+            // in rainbow mode so the hot streaks stay on-palette
+            const [hr, hg, hb] = rainbow
+              ? hslColor(hue, 0.95, clamp(0.5 + heat * 0.12, 0, 0.66))
+              : heatColor(clamp(0.18 + heat * 0.8, 0, 1));
             const m = clamp(heat * 1.6, 0, 1); // crust → magma reveal (eager)
-            rr = mix(ir, hr, m) | 0;
-            gg = mix(ig, hg, m) | 0;
-            bb = mix(ib, hb, m) | 0;
+            rr = mix(base[0], hr, m) | 0;
+            gg = mix(base[1], hg, m) | 0;
+            bb = mix(base[2], hb, m) | 0;
           } else {
-            [rr, gg, bb] = iceColor(lp);
+            [rr, gg, bb] = base;
           }
-          ctx.globalAlpha = Math.min(
-            1,
+          let alpha =
             appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) +
-              heat * 0.35, // molten cells glow rather than fade
-          );
-          ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
-          ctx.fillText(
+            heat * 0.35;
+          if (rainbow) alpha *= 1.5; // pastels need to be more opaque on light bg
+          ctx.globalAlpha = Math.min(1, alpha);
+          const glyph =
             heat > 0.28
               ? magmaGlyph(heat)
               : sparkle > 0.42
                 ? cell.crystal
-                : cell.core,
-            cell.sx,
-            cell.sy,
-          );
+                : cell.core;
+          // a dark outline gives the pastel glyphs definition against light bg
+          if (rainbow) {
+            ctx.strokeStyle = "rgba(34,26,52,0.5)";
+            ctx.strokeText(glyph, cell.sx, cell.sy);
+          }
+          ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+          ctx.fillText(glyph, cell.sx, cell.sy);
         }
 
         // additive bloom: a cold halo over the brightest crystals
@@ -574,6 +625,7 @@
           }
         }
 
+        const vsprite = rainbow ? vaporLight : vapor;
         for (let i = puffs.length - 1; i >= 0; i--) {
           const q = puffs[i];
           q.vy += 26 * dt; // gravity — CO₂ fog is heavy, it pours down
@@ -592,7 +644,7 @@
           // dominate the fill cost
           const d = Math.min(q.size, G * 0.12) * p.s;
           ctx.globalAlpha = clamp(q.life, 0, 1) * q.fade * 0.4;
-          ctx.drawImage(vapor, p.sx - d, p.sy - d, d * 2, d * 2);
+          ctx.drawImage(vsprite, p.sx - d, p.sy - d, d * 2, d * 2);
         }
 
         // --- frost shards: the crust cracks and flakes, much more so over the
@@ -645,6 +697,8 @@
         }
 
         ctx.font = `${fontSize * 0.72}px ui-monospace, Menlo, monospace`;
+        // bright ice on dark; a slate tint so flakes still read on the light bg
+        ctx.fillStyle = rainbow ? "rgb(120,128,160)" : "rgb(226,242,255)";
         for (let i = shards.length - 1; i >= 0; i--) {
           const s = shards[i];
           s.vy += 210 * dt; // gravity
@@ -656,7 +710,6 @@
           }
           const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
           ctx.globalAlpha = twk;
-          ctx.fillStyle = "rgb(226,242,255)";
           ctx.fillText(s.glyph, s.x, s.y);
         }
 
@@ -695,6 +748,15 @@
       // (WOW_URL) so the single-file bundler inlines it just once.
       const WOW_URL = "assets/wow.mp3";
       let wowWarm = null;
+      // R → toggle rainbow mode (re-render once if motion is paused/reduced)
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "r" || e.key === "R") {
+          rainbow = !rainbow;
+          document.body.style.background = rainbow ? LIGHT_BG : DARK_BG;
+          if (reduced) render(INTRO, 0);
+        }
+      });
+
       window.addEventListener("pointerdown", (e) => {
         const a = new Audio(WOW_URL);
         a.volume = 0.7;
