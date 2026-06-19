@@ -209,6 +209,7 @@
       }
       const puffs = [];
       const shards = []; // bright ice bits that sparkle off and fall away
+      let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
 
       let vw = 0,
         vh = 0,
@@ -523,6 +524,35 @@
             }
           }
         }
+        // poke: a tap/click knocks a burst of flakes off the mark near the cursor
+        if (poke && !reduced && cov > 0.3) {
+          const R = G * 0.2;
+          const near = [];
+          for (let k = 0; k < cells.length; k++) {
+            const cell = cells[k];
+            if (cov < cell.reveal) continue;
+            if (Math.hypot(cell.sx - poke.x, cell.sy - poke.y) <= R)
+              near.push(k);
+          }
+          const burst = Math.min(30, near.length);
+          for (let m = 0; m < burst && shards.length < 250; m++) {
+            const cell = cells[near[(Math.random() * near.length) | 0]];
+            const ddx = cell.sx - poke.x,
+              ddy = cell.sy - poke.y;
+            const dist = Math.hypot(ddx, ddy) || 1;
+            const spd = 70 + (1 - dist / R) * 240 + Math.random() * 60;
+            shards.push({
+              x: cell.sx,
+              y: cell.sy,
+              vx: (ddx / dist) * spd + (Math.random() - 0.5) * 40,
+              vy: (ddy / dist) * spd - 70 - Math.random() * 90, // out + pop up
+              phase: Math.random() * Math.PI * 2,
+              glyph: cell.crystal,
+            });
+          }
+          poke = null;
+        }
+
         ctx.font = `${fontSize * 0.72}px ui-monospace, Menlo, monospace`;
         for (let i = shards.length - 1; i >= 0; i--) {
           const s = shards[i];
@@ -574,10 +604,11 @@
       // (WOW_URL) so the single-file bundler inlines it just once.
       const WOW_URL = "assets/wow.mp3";
       let wowWarm = null;
-      window.addEventListener("pointerdown", () => {
+      window.addEventListener("pointerdown", (e) => {
         const a = new Audio(WOW_URL);
         a.volume = 0.7;
         a.play().catch(() => {});
+        poke = { x: e.clientX, y: e.clientY }; // released as flakes next frame
         // iOS gates deviceorientation behind a user-gesture permission prompt
         const DOE = window.DeviceOrientationEvent;
         if (DOE && typeof DOE.requestPermission === "function") {
