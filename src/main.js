@@ -719,30 +719,34 @@ function start() {
   rafId = requestAnimationFrame(loop);
 }
 
-// Click anywhere → anime "wow" (meme easter egg). Pool a few Audio elements
-// (src set once) so a fast mash reuses them — instead of `new Audio()` per tap,
-// which re-decodes the inlined mp3 every time and stacks unbounded simultaneous
-// plays (the source of the jank). Concurrency is capped at the pool size.
-const WOW_POOL = 4;
-const wowPool = Array.from({ length: WOW_POOL }, () => {
-  const a = new Audio(wowUrl);
-  a.volume = 0.7;
-  a.preload = "auto";
-  return a;
-});
-let wowNext = 0;
+// Click anywhere → anime "wow" (meme easter egg). Decode the inlined mp3 once
+// into an AudioBuffer and fire cheap overlapping BufferSource voices, so a fast
+// mash layers full plays — no per-tap decode (the old jank) and no clipped
+// restarts (the pool's flaw). Capped at WOW_MAX simultaneous voices.
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const WOW_MAX = 8;
+let actx = null,
+  wowBuf = null,
+  wowVoices = 0;
+if (AudioCtx) {
+  actx = new AudioCtx();
+  fetch(wowUrl)
+    .then((r) => r.arrayBuffer())
+    .then((b) => actx.decodeAudioData(b))
+    .then((buf) => (wowBuf = buf))
+    .catch(() => {});
+}
 function playWow() {
-  let a = wowPool.find((x) => x.paused || x.ended);
-  if (!a) {
-    a = wowPool[wowNext]; // all busy → steal the oldest, round-robin
-    wowNext = (wowNext + 1) % WOW_POOL;
-  }
-  try {
-    a.currentTime = 0;
-    a.play().catch(() => {});
-  } catch {
-    // play() raced on a reused element — ignore
-  }
+  if (!actx || !wowBuf || wowVoices >= WOW_MAX) return;
+  if (actx.state === "suspended") actx.resume(); // unlock on the user gesture
+  const src = actx.createBufferSource();
+  src.buffer = wowBuf;
+  const g = actx.createGain();
+  g.gain.value = 0.7;
+  src.connect(g).connect(actx.destination);
+  src.onended = () => wowVoices--;
+  wowVoices++;
+  src.start();
 }
 // --- shared easter-egg triggers (keyboard + touch gestures) ---
 function toggleRainbow() {
