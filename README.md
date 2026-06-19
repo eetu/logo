@@ -9,41 +9,43 @@ the obligatory anime _wow_.
 It also doubles as a small **example of wrapping any static web build in a
 container** so it can be deployed to Kubernetes, podman, or any host.
 
+_Press **R** for rainbow mode; mash it to spin; double-tap to drill a magma
+vent; ↑↑↓↓←→←→ B A erupts the whole mark._
+
 ## Develop
 
-The site lives in `src/` (`src/index.html` + `src/assets/`). No install needed
-to run — open `src/index.html` directly, or serve the folder over HTTP with any
-static server, e.g.:
+The source lives in `src/`: `index.html`, the ES modules (`main.js` +
+`mask.js`, `util.js`), `assets/` (the `wow.mp3`), and `public/` (favicons + web
+manifest). Built with [Vite](https://vite.dev); package manager is **yarn**
+(vendored under `.yarn/releases/`, node pinned in `.node-version`):
 
 ```sh
-npx serve src        # or: python3 -m http.server 8080 --directory src
+yarn install
+yarn dev             # local dev server with HMR
+yarn validate        # eslint + prettier check (lint + format)
+yarn lint:fix        # eslint --fix
+yarn format:fix      # prettier --write
 ```
 
-Tooling (formatting) does need deps:
+Linting uses the shared
+[`@anarkisti/eslint-config`](https://github.com/eetu/eslint-config) `web` preset
+(browser globals).
+
+## Build
+
+`npm run build` bundles and minifies the modules and inlines the JS/CSS **and**
+the `wow.mp3` into a single self-contained `dist/index.html` (via
+`vite-plugin-singlefile`); the favicons + manifest are emitted alongside it.
 
 ```sh
-npm install
-npm run format       # prettier --write
+yarn build
+yarn preview         # serve the built dist/ locally
 ```
-
-## Build (optional single-file bundle)
-
-For dropping the logo somewhere as **one portable file**, `build.mjs` inlines
-every referenced asset (the `wow.mp3`) as a `data:` URI into `dist/index.html`:
-
-```sh
-npm run build
-```
-
-Handy for emailing/embedding, but heavier on first paint (the audio rides inside
-the HTML). The container below deliberately does _not_ use it.
 
 ## Container
 
-The image serves the **split assets** (`index.html` + `wow.mp3`) with rootless
-nginx on port **8080**. The HTML stays tiny so first paint is fast, and the mp3
-is fetched lazily (warmed after first render, played on click) — so audio never
-blocks load.
+A multi-stage image builds the bundle with Vite, then serves the built `dist/`
+with rootless nginx on port **8080**.
 
 ```sh
 docker build -t invinite-logo .

@@ -3,3 +3,11 @@ dist
 .DS_Store
 _*.png
 *.log
+
+# Yarn (berry) — vendor the release binary, ignore the rest
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
