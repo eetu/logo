@@ -132,7 +132,7 @@
       const DARK_BG =
         "radial-gradient(120% 120% at 50% 40%, #0d1426 0%, #080d1a 55%, #05080f 100%)";
       const LIGHT_BG =
-        "radial-gradient(120% 120% at 50% 40%, #f6f7fb 0%, #eceef6 55%, #e2e6f1 100%)";
+        "radial-gradient(120% 120% at 50% 40%, #dcefff 0%, #c4e2fb 55%, #aed4f5 100%)";
       const hue2 = (p, q, t) => {
         if (t < 0) t += 1;
         if (t > 1) t -= 1;
@@ -258,6 +258,12 @@
       const shards = []; // bright ice bits that sparkle off and fall away
       let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
       let rainbow = false; // press R — recolour the ice with a swirling rainbow
+      // rapid repeated hits spin the gear: each combo hit adds spin velocity,
+      // which damps out — so a quick flurry whips it around 360°+ and settles.
+      let spin = 0,
+        spinVel = 0,
+        lastHit = -10,
+        combo = 0;
       // magma seeds for the current cycle — a few random points the lava pools
       // grow out from; re-rolled each cycle so the pattern moves around.
       let magmaCycle = -1;
@@ -391,8 +397,9 @@
         pitchC += (tgtPitch - pitchC) * ease;
         const yaw = yawC,
           pitch = pitchC;
-        const sinA = Math.sin(yaw),
-          cosA = Math.cos(yaw);
+        // spin (from rapid hits) adds to yaw → the gear turns about the vertical
+        const sinA = Math.sin(yaw + spin),
+          cosA = Math.cos(yaw + spin);
         const sinP = Math.sin(pitch),
           cosP = Math.cos(pitch);
 
@@ -408,6 +415,17 @@
         Hx /= Hlen;
         Hy /= Hlen;
         Hz /= Hlen;
+
+        // spin decays each frame; once slow, a spring eases it to the nearest
+        // full turn so the gear never rests edge-on (added into yaw below)
+        spinVel *= Math.exp(-dt * 1.8);
+        const spinTarget = Math.round(spin / (Math.PI * 2)) * (Math.PI * 2);
+        if (Math.abs(spinVel) < 2) spinVel += (spinTarget - spin) * dt * 5;
+        spin += spinVel * dt;
+        if (Math.abs(spinVel) < 0.05 && Math.abs(spin - spinTarget) < 0.02) {
+          spin = 0; // settled — reset to exact front (a multiple of 2π)
+          spinVel = 0;
+        }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -528,6 +546,13 @@
             bb = mix(base[2], hb, m) | 0;
           } else {
             [rr, gg, bb] = base;
+          }
+          // in light/rainbow mode the refresh sweep reads as a gold crystallizing
+          // front (tint toward gold by the flash, strongest right at the front)
+          if (rainbow && flash > 0.001) {
+            rr = mix(rr, 247, flash) | 0;
+            gg = mix(gg, 197, flash) | 0;
+            bb = mix(bb, 74, flash) | 0;
           }
           let alpha =
             appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) +
@@ -762,6 +787,10 @@
         a.volume = 0.7;
         a.play().catch(() => {});
         poke = { x: e.clientX, y: e.clientY }; // released as flakes next frame
+        // rapid-hit combo → spin: 3rd+ quick hit adds spin velocity
+        combo = animT - lastHit < 0.6 ? combo + 1 : 1;
+        lastHit = animT;
+        if (combo >= 3) spinVel += 14;
         // iOS gates deviceorientation behind a user-gesture permission prompt
         const DOE = window.DeviceOrientationEvent;
         if (DOE && typeof DOE.requestPermission === "function") {
