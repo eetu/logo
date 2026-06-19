@@ -232,8 +232,8 @@ function render(t, dt) {
   const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
 
   // smash rage cools when you stop; drives an escalating screen shake
-  rage = Math.max(0, rage - dt * 0.5);
-  const shAmp = rage * rage * 28;
+  rage = Math.max(0, rage - dt * 0.4);
+  const shAmp = rage * rage * 34;
   const shx = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
   const shy = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
 
@@ -802,7 +802,7 @@ function tap(x, y) {
   lastHit = animT;
   if (combo >= 3) spinVel += 14;
   // smash tier: frantic tapping builds rage; at the top the mark overheats
-  rage = Math.min(1, rage + 0.07);
+  rage = Math.min(1, rage + 0.14);
   if (rage >= 1 && animT - lastMelt > 3) {
     lastMelt = animT;
     eruptStart = animT; // meltdown — you poked the frozen mark until it melted
