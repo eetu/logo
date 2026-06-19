@@ -102,6 +102,10 @@
 
       const CORE = ["+", "·", "*", "◦"];
       const CRYSTAL = ["❆", "❅", "✦", "✳"];
+      // magma rendered in the same cell grid as the ice — a density ramp of
+      // shade blocks so vents read as molten matter welling up, by heat.
+      const MAGMA = ["░", "▒", "▓"];
+      const magmaGlyph = (heat) => MAGMA[heat > 0.7 ? 2 : heat > 0.5 ? 1 : 0];
 
       // palette stops (steel → ice → bright), interpolated by a 0..1 lightness
       const DEEP = [46, 78, 130];
@@ -123,6 +127,16 @@
         p < 0.5
           ? lerpRGB(DEEP, ICE, p * 2)
           : lerpRGB(ICE, BRIGHT, (p - 0.5) * 2);
+
+      // molten palette (dark blood → red → bright red-orange) shown through the
+      // crust where the magma bleeds up. Kept red — never reaches yellow.
+      const HEAT_LO = [70, 6, 4];
+      const HEAT_MID = [180, 22, 12];
+      const HEAT_HI = [255, 66, 30];
+      const heatColor = (p) =>
+        p < 0.5
+          ? lerpRGB(HEAT_LO, HEAT_MID, p * 2)
+          : lerpRGB(HEAT_MID, HEAT_HI, (p - 0.5) * 2);
 
       // One entry per lit cell: grid pos, normalized polar coords in the square
       // display space, a stable random, glyphs, and a relief height (the frost
@@ -210,6 +224,13 @@
       const puffs = [];
       const shards = []; // bright ice bits that sparkle off and fall away
       let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
+      // magma seeds for the current cycle — a few random points the lava pools
+      // grow out from; re-rolled each cycle so the pattern moves around.
+      let magmaCycle = -1;
+      let seeds = [];
+      let seedOff = 0;
+      let seedsPrev = []; // last cycle's seeds — the not-yet-swept rim still uses
+      let seedOffPrev = 0; // them until the sweep front reaches it
 
       let vw = 0,
         vh = 0,
@@ -268,13 +289,18 @@
       const SHINE = 18; // specular tightness — higher = tighter glint
       const BLOOM_TH = 0.5; // sparkle above this gets an additive halo
 
-      // periodic re-freeze: a thaw front rakes across the mark, melting the
-      // frost at the leading edge and re-crystallizing it just behind.
-      const EV_PERIOD = 34; // seconds between sweeps
-      const EV_DUR = 7; // seconds for one front to cross
-      const EV_FIRST = 6; // grace after intro before the first sweep
-      const EV_TW = 0.16; // thaw (melt) width ahead of the front, in u units
-      const EV_FW = 0.1; // re-freeze flash width behind the front
+      // freeze cycle: the surface slowly degrades — magma veins grow up through
+      // the ice (driving steam + flaking) — then a fast sweep lays down fresh ice
+      // and quenches them. A cell is refreshed when the sweep front passes its
+      // `u`; the longer since, the higher the magma floods (see the draw loop).
+      const EV_PERIOD = 22; // full degrade → refresh cycle (s)
+      const EV_DUR = 4.5; // fast refresh sweep crossing time (s)
+      const EV_FIRST = 3; // grace after intro before the first cycle
+      const HEAT_DELAY = 2; // fresh ice stays cold this long after a refresh (s)
+      const EV_FLASH = 0.7; // crystallization sparkle as the fresh ice forms (s)
+      const MAGMA_R = 11; // pool radius (in cells) magma reaches by end of cycle
+      const MAGMA_EDGE = 4; // soft falloff width at a pool's edge (cells)
+      const MAGMA_SEEDS = 4; // how many pools per cycle
 
       // Project a point (centred gear space, z toward camera = negative) through
       // a yaw/pitch camera + perspective. Returns screen pos, scale and depth.
@@ -294,15 +320,31 @@
         const sweep = (t / SWEEP) % 1;
         const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
 
-        // re-freeze event: position of the thaw front along the diagonal u axis
-        // (−EV_TW → 1+EV_FW). Inactive between sweeps so dwell isn't fully static.
-        let evActive = false;
-        let frontP = 0;
-        if (!reduced && t > INTRO + EV_FIRST) {
-          const lt = (t - INTRO - EV_FIRST) % EV_PERIOD;
-          if (lt < EV_DUR) {
-            evActive = true;
-            frontP = mix(-EV_TW, 1 + EV_FW, lt / EV_DUR);
+        // freeze cycle: local time within the current cycle, plus a one-off
+        // ramp so the magma eases in over the first cycle rather than popping.
+        const cyc = !reduced && t > INTRO + EV_FIRST;
+        const ct = t - INTRO - EV_FIRST;
+        const lt = cyc ? ct % EV_PERIOD : 0;
+        const ramp = cyc ? clamp(ct / 5, 0, 1) : 0; // ease in over first ~5s
+
+        // re-roll the magma seeds at the start of each cycle so the pools grow
+        // somewhere new. Warp the seed coords by a low-freq field (shared with
+        // the cells) so pools finger out organically instead of as clean discs.
+        if (cyc) {
+          const cycle = Math.floor(ct / EV_PERIOD);
+          if (cycle !== magmaCycle) {
+            magmaCycle = cycle;
+            seedsPrev = seeds; // keep last cycle's pattern for the unswept rim
+            seedOffPrev = seedOff;
+            seedOff = cycle * 2.4;
+            seeds = [];
+            for (let k = 0; k < MAGMA_SEEDS; k++) {
+              const s = cells[(Math.random() * cells.length) | 0];
+              seeds.push({
+                wc: s.c + 3 * Math.sin(s.r * 0.4 + seedOff),
+                wr: s.r + 3 * Math.sin(s.c * 0.4 + seedOff),
+              });
+            }
           }
         }
 
@@ -370,6 +412,7 @@
             ctx.fillStyle = "rgb(46,78,130)";
             ctx.fillText(cell.core, cell.sx, cell.sy);
             cell.bloom = 0;
+            cell.heat = 0;
             continue;
           }
           const appear = clamp((cov - cell.reveal) / 0.08, 0, 1);
@@ -378,16 +421,43 @@
           const tw = reduced
             ? 0
             : Math.pow(Math.max(0, Math.sin(t * 1.7 + cell.phase)), 14) * 0.7;
-          // thaw front: melt ahead of it, re-crystallization flash behind it
-          let evMelt = 0,
-            evFlash = 0;
-          if (evActive) {
-            const d = cell.u - frontP;
-            evMelt = d > 0 ? smoothstep(EV_TW, 0, d) : 0;
-            evFlash = d < 0 ? smoothstep(EV_FW, 0, -d) : 0;
+          // degrade/refresh: `since` is seconds since the sweep last refroze
+          // this cell. Magma pools grow outward from the cycle's seed points as
+          // `since` rises (radius expands); flash is the brief crystallization
+          // as fresh ice forms right after the front passes.
+          let heat = 0,
+            flash = 0;
+          if (cyc) {
+            let since = lt - cell.u * EV_DUR;
+            if (since < 0) since += EV_PERIOD;
+            flash = smoothstep(EV_FLASH, 0, since); // crystallization at refresh
+            const radius =
+              smoothstep(HEAT_DELAY, EV_PERIOD * 0.85, since) * MAGMA_R;
+            // use the seed set from the cycle this cell was last refreshed in —
+            // the switch lands at the sweep front, where radius is ~0, so the
+            // pattern never visibly jumps on the still-glowing rim
+            const sameCycle =
+              Math.floor((ct - since) / EV_PERIOD) === magmaCycle;
+            const sset = sameCycle ? seeds : seedsPrev;
+            const soff = sameCycle ? seedOff : seedOffPrev;
+            if (radius > 0 && sset.length) {
+              const wc = cell.c + 3 * Math.sin(cell.r * 0.4 + soff);
+              const wr = cell.r + 3 * Math.sin(cell.c * 0.4 + soff);
+              let best = 1e9;
+              for (let k = 0; k < sset.length; k++) {
+                const dx = wc - sset[k].wc,
+                  dy = wr - sset[k].wr;
+                const dd = dx * dx + dy * dy;
+                if (dd < best) best = dd;
+              }
+              const dist = Math.sqrt(best);
+              if (dist < radius)
+                heat = clamp((radius - dist) / MAGMA_EDGE, 0, 1) * ramp;
+            }
           }
-          const sparkle = Math.max(glint, tw) * (1 - evMelt) + evFlash * 0.9;
-          cell.bloom = sparkle > BLOOM_TH ? sparkle - BLOOM_TH : 0;
+          const sparkle = Math.max(glint, tw) * (1 - heat * 0.8) + flash * 0.9;
+          cell.bloom = sparkle > BLOOM_TH ? sparkle - BLOOM_TH : 0; // cold halo
+          cell.heat = heat; // also sourced by the steam + flaking spawners
           // depth shading: nearer (s>1) brighter, farther dimmer
           const depth = clamp((cell.s - 0.9) * 1.4, 0, 1);
           const lp = clamp(
@@ -396,19 +466,33 @@
               (cell.rnd - 0.5) * 0.1 +
               sparkle * 0.65 +
               depth * 0.12) *
-              (1 - evMelt * 0.65), // melted frost darkens before refreezing
+              (1 - heat * 0.35), // ice base dims as the crust melts away
             0,
             1,
           );
-          const [rr, gg, bb] = iceColor(lp);
-          ctx.globalAlpha =
-            appear *
-            (0.78 + 0.22 * breathe) *
-            (0.7 + 0.3 * depth) *
-            (1 - evMelt * 0.5);
+          let rr, gg, bb;
+          if (heat > 0.001) {
+            const [ir, ig, ib] = iceColor(lp);
+            const [hr, hg, hb] = heatColor(clamp(0.18 + heat * 0.8, 0, 1));
+            const m = clamp(heat * 1.6, 0, 1); // crust → magma reveal (eager)
+            rr = mix(ir, hr, m) | 0;
+            gg = mix(ig, hg, m) | 0;
+            bb = mix(ib, hb, m) | 0;
+          } else {
+            [rr, gg, bb] = iceColor(lp);
+          }
+          ctx.globalAlpha = Math.min(
+            1,
+            appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) +
+              heat * 0.35, // molten cells glow rather than fade
+          );
           ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
           ctx.fillText(
-            sparkle > 0.42 ? cell.crystal : cell.core,
+            heat > 0.28
+              ? magmaGlyph(heat)
+              : sparkle > 0.42
+                ? cell.crystal
+                : cell.core,
             cell.sx,
             cell.sy,
           );
@@ -460,6 +544,36 @@
           }
         }
 
+        // hot steam: magma vents boil off vapour that rises fast — sourced from
+        // whichever cells are currently glowing (cell.heat set in the draw pass)
+        if (cyc && cov > 0.35) {
+          const want = 90 * PQ * dt;
+          for (
+            let n = 0;
+            n < want || Math.random() < want - Math.floor(want);
+            n++
+          ) {
+            if (n >= 60) break;
+            const src = cells[(Math.random() * cells.length) | 0];
+            if (src.heat < 0.3 || cov < src.reveal) continue;
+            const px = (src.c + 0.5 - COLS / 2) * cellW;
+            const py = (src.r + 0.5 - ROWS / 2) * cellH;
+            puffs.push({
+              x: px,
+              y: py,
+              z: -src.relief * dome - 6,
+              vx: (Math.random() - 0.5) * 22,
+              vy: -(26 + Math.random() * 30) * src.heat, // hotter → rises faster
+              life: 1,
+              ttl: 1.6 + Math.random() * 1.4,
+              size: G * 0.016,
+              sway: Math.random() * Math.PI * 2,
+              fade: 0,
+            });
+            if (puffs.length > 320 * PQ) puffs.shift();
+          }
+        }
+
         for (let i = puffs.length - 1; i >= 0; i--) {
           const q = puffs[i];
           q.vy += 26 * dt; // gravity — CO₂ fog is heavy, it pours down
@@ -481,47 +595,24 @@
           ctx.drawImage(vapor, p.sx - d, p.sy - d, d * 2, d * 2);
         }
 
-        // --- frost shards: bright bits chip off and sparkle as they fall away ---
-        if (
-          !reduced &&
-          cov > 0.5 &&
-          Math.random() < 2 * dt &&
-          shards.length < 140
-        ) {
-          const src = cells[(Math.random() * cells.length) | 0];
-          if (cov >= src.reveal) {
+        // --- frost shards: the crust cracks and flakes, much more so over the
+        // magma vents (chance scales with the cell's heat) ---
+        if (!reduced && cov > 0.5 && shards.length < 180) {
+          const tries = 1 + (4 * dt) / FRAME; // a few attempts per frame
+          for (let n = 0; n < tries; n++) {
+            const src = cells[(Math.random() * cells.length) | 0];
+            if (cov < src.reveal) continue;
+            if (Math.random() > 0.04 + src.heat * 0.9) continue;
+            const hot = src.heat > 0.3;
             shards.push({
               x: src.sx,
               y: src.sy,
-              vx: (Math.random() - 0.5) * 45,
-              vy: -10 - Math.random() * 25, // small upward chip, then it falls
+              vx: (Math.random() - 0.5) * (hot ? 60 : 45),
+              vy: -(hot ? 16 : 10) - Math.random() * 28, // chip up, then falls
               phase: Math.random() * Math.PI * 2,
               glyph: src.crystal,
             });
-          }
-        }
-
-        // re-freeze burst: chips fly off the refreezing edge as the front passes
-        if (evActive && cov > 0.5) {
-          const want = 24 * dt;
-          for (
-            let n = 0;
-            n < want || Math.random() < want - Math.floor(want);
-            n++
-          ) {
-            if (n >= 30 || shards.length >= 170) break;
-            const src = cells[(Math.random() * cells.length) | 0];
-            const d = src.u - frontP;
-            if (d < 0 && d > -EV_FW * 1.5 && cov >= src.reveal) {
-              shards.push({
-                x: src.sx,
-                y: src.sy,
-                vx: (Math.random() - 0.5) * 55,
-                vy: -14 - Math.random() * 28,
-                phase: Math.random() * Math.PI * 2,
-                glyph: src.crystal,
-              });
-            }
+            if (shards.length >= 180) break;
           }
         }
         // poke: a tap/click knocks a burst of flakes off the mark near the cursor
