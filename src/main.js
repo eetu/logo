@@ -194,6 +194,7 @@ const SWEEP = 14.0; // light-orbit seconds
 const LIGHT_EL = 1.0; // light elevation from the view axis (rad)
 const SHINE = 18; // specular tightness — higher = tighter glint
 const BLOOM_TH = 0.5; // sparkle above this gets an additive halo
+const MAX_SHARDS = coarse ? 90 : 160; // live flake cap (lower on touch)
 
 // freeze cycle: the surface slowly degrades — magma veins grow up through
 // the ice (driving steam + flaking) — then a fast sweep lays down fresh ice
@@ -557,7 +558,7 @@ function render(t, dt) {
 
   // --- frost shards: the crust cracks and flakes, much more so over the
   // magma vents (chance scales with the cell's heat) ---
-  if (!reduced && cov > 0.5 && shards.length < 180) {
+  if (!reduced && cov > 0.5 && shards.length < MAX_SHARDS) {
     const tries = 1 + (4 * dt) / FRAME; // a few attempts per frame
     for (let n = 0; n < tries; n++) {
       const src = cells[(Math.random() * cells.length) | 0];
@@ -572,7 +573,7 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: src.crystal,
       });
-      if (shards.length >= 180) break;
+      if (shards.length >= MAX_SHARDS) break;
     }
   }
   // poke: a tap/click knocks a burst of flakes off the mark near the cursor
@@ -584,8 +585,8 @@ function render(t, dt) {
       if (cov < cell.reveal) continue;
       if (Math.hypot(cell.sx - poke.x, cell.sy - poke.y) <= R) near.push(k);
     }
-    const burst = Math.min(30, near.length);
-    for (let m = 0; m < burst && shards.length < 250; m++) {
+    const burst = Math.min(18, near.length);
+    for (let m = 0; m < burst && shards.length < MAX_SHARDS; m++) {
       const cell = cells[near[(Math.random() * near.length) | 0]];
       const ddx = cell.sx - poke.x,
         ddy = cell.sy - poke.y;
@@ -718,9 +719,31 @@ function start() {
   rafId = requestAnimationFrame(loop);
 }
 
-// Click anywhere → anime "wow" (meme easter egg). The mp3 is imported so the
-// bundler inlines it into the single-file build.
-let wowWarm = null;
+// Click anywhere → anime "wow" (meme easter egg). Pool a few Audio elements
+// (src set once) so a fast mash reuses them — instead of `new Audio()` per tap,
+// which re-decodes the inlined mp3 every time and stacks unbounded simultaneous
+// plays (the source of the jank). Concurrency is capped at the pool size.
+const WOW_POOL = 4;
+const wowPool = Array.from({ length: WOW_POOL }, () => {
+  const a = new Audio(wowUrl);
+  a.volume = 0.7;
+  a.preload = "auto";
+  return a;
+});
+let wowNext = 0;
+function playWow() {
+  let a = wowPool.find((x) => x.paused || x.ended);
+  if (!a) {
+    a = wowPool[wowNext]; // all busy → steal the oldest, round-robin
+    wowNext = (wowNext + 1) % WOW_POOL;
+  }
+  try {
+    a.currentTime = 0;
+    a.play().catch(() => {});
+  } catch {
+    // play() raced on a reused element — ignore
+  }
+}
 // --- shared easter-egg triggers (keyboard + touch gestures) ---
 function toggleRainbow() {
   rainbow = !rainbow;
@@ -750,9 +773,7 @@ window.addEventListener("keydown", (e) => {
 
 // a plain tap: wow + flakes, rapid-tap spin combo, double-tap vent
 function tap(x, y) {
-  const a = new Audio(wowUrl);
-  a.volume = 0.7;
-  a.play().catch(() => {});
+  playWow();
   poke = { x, y }; // released as flakes next frame
   combo = animT - lastHit < 0.6 ? combo + 1 : 1;
   lastHit = animT;
@@ -910,15 +931,6 @@ function onTilt(e) {
   pnx = clamp(e.gamma / 35, -1, 1); // left↔right tilt
   pny = clamp((e.beta - 45) / 35, -1, 1); // front↔back, 45° = neutral hold
 }
-// warm the audio cache after first paint so the first click is snappy
-const preloadWow = () => {
-  wowWarm = new Audio(wowUrl);
-  wowWarm.preload = "auto";
-};
-if ("requestIdleCallback" in window)
-  requestIdleCallback(preloadWow, { timeout: 2500 });
-else setTimeout(preloadWow, 1500);
-
 // pause when the tab/window isn't visible — no CPU in the background
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) cancelAnimationFrame(rafId);
