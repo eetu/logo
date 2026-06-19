@@ -11,3 +11,6 @@ _*.png
 !.yarn/plugins
 !.yarn/releases
 !.yarn/sdks
+
+# raw generated sources kept locally for re-keying, not committed
+src/assets/*_org.*
