@@ -1,3 +1,4 @@
+import unicornUrl from "./assets/unicorn.png";
 import wowUrl from "./assets/wow.mp3";
 import { COLS, MASK, ROWS } from "./mask.js";
 import {
@@ -121,6 +122,9 @@ let spin = 0,
   combo = 0;
 let eruptStart = -100; // Konami code → whole mark erupts, then settles
 let konamiAt = 0; // progress through the code
+let unicornStart = -100; // Konami in rainbow mode → unicorn jumps the mark
+const unicornImg = new Image();
+unicornImg.src = unicornUrl;
 const userVents = []; // double-tap drills a magma vent at that spot
 let lastTap = -10,
   lastTapX = 0,
@@ -203,6 +207,7 @@ const MAGMA_R = 11; // pool radius (in cells) magma reaches by end of cycle
 const MAGMA_EDGE = 4; // soft falloff width at a pool's edge (cells)
 const MAGMA_SEEDS = 4; // how many pools per cycle
 const VENT_R = 6; // radius (cells) of a hand-drilled (double-tap) vent
+const UNICORN_DUR = 2.2; // seconds for the unicorn to arc across the screen
 
 // Project a point (centred gear space, z toward camera = negative) through
 // a yaw/pitch camera + perspective. Returns screen pos, scale and depth.
@@ -613,8 +618,24 @@ function render(t, dt) {
     ctx.globalAlpha = twk;
     ctx.fillText(s.glyph, s.x, s.y);
   }
-
   ctx.globalAlpha = 1;
+
+  // unicorn easter egg: Konami while in rainbow mode → a cartoon unicorn
+  // leaps over the mark on a parabolic arc (left→right, tilting with the arc)
+  if (rainbow && unicornImg.complete && unicornImg.naturalWidth) {
+    const up = (t - unicornStart) / UNICORN_DUR;
+    if (up >= 0 && up <= 1) {
+      const uw = G * 0.5;
+      const uh = (uw * unicornImg.naturalHeight) / unicornImg.naturalWidth;
+      const ux = mix(-uw, vw + uw, up); // enters left, exits right
+      const uy = cy + G * 0.25 - G * 0.85 * Math.sin(up * Math.PI); // arcs over
+      ctx.save();
+      ctx.translate(ux, uy);
+      ctx.rotate(-Math.cos(up * Math.PI) * 0.25); // nose up rising, down falling
+      ctx.drawImage(unicornImg, -uw / 2, -uh / 2, uw, uh);
+      ctx.restore();
+    }
+  }
 }
 
 // Throttle to a fixed frame rate — uncapped rAF burns CPU on 120Hz panels.
@@ -672,6 +693,7 @@ window.addEventListener("keydown", (e) => {
   if (konamiAt === KONAMI.length) {
     konamiAt = 0;
     eruptStart = animT;
+    if (rainbow) unicornStart = animT; // rainbow mode → a unicorn leaps over
     if (reduced) render(INTRO, 0);
   }
 });
