@@ -630,6 +630,39 @@ function render(t, dt) {
       const uh = (uw * unicornImg.naturalHeight) / unicornImg.naturalWidth;
       const ux = mix(-uw, vw + uw, up); // enters left, exits right
       const uy = cy + G * 0.25 - G * 0.85 * Math.sin(up * Math.PI); // arcs over
+      // rainbow ribbon trailing the leap: sample the arc behind the unicorn and
+      // stroke fading rainbow stripes (drawn under the sprite)
+      const RB = [
+        "#ff5a5a",
+        "#ff9e3b",
+        "#ffe23b",
+        "#46d65a",
+        "#4a8cff",
+        "#9b5bff",
+      ];
+      const s0 = Math.max(0, up - 0.5);
+      const sw = Math.max(2, uh * 0.1);
+      const tx = mix(-uw, vw + uw, s0);
+      const ty = cy + G * 0.25 - G * 0.85 * Math.sin(s0 * Math.PI);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = sw + 1;
+      for (let i = 0; i < RB.length; i++) {
+        const off = (i - (RB.length - 1) / 2) * sw;
+        const g = ctx.createLinearGradient(tx, ty, ux, uy);
+        g.addColorStop(0, RB[i] + "00"); // transparent at the tail
+        g.addColorStop(1, RB[i] + "aa"); // ~0.67 alpha behind the unicorn
+        ctx.strokeStyle = g;
+        ctx.beginPath();
+        for (let k = 0; k <= 16; k++) {
+          const s = s0 + (up - s0) * (k / 16);
+          const x = mix(-uw, vw + uw, s);
+          const y = cy + G * 0.25 - G * 0.85 * Math.sin(s * Math.PI) + off;
+          if (k === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
       ctx.save();
       ctx.translate(ux, uy);
       ctx.rotate(-Math.cos(up * Math.PI) * 0.25); // nose up rising, down falling
