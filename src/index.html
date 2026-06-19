@@ -264,6 +264,12 @@
         spinVel = 0,
         lastHit = -10,
         combo = 0;
+      let eruptStart = -100; // Konami code → whole mark erupts, then settles
+      let konamiAt = 0; // progress through the code
+      const userVents = []; // double-tap drills a magma vent at that spot
+      let lastTap = -10,
+        lastTapX = 0,
+        lastTapY = 0;
       // magma seeds for the current cycle — a few random points the lava pools
       // grow out from; re-rolled each cycle so the pattern moves around.
       let magmaCycle = -1;
@@ -341,6 +347,7 @@
       const MAGMA_R = 11; // pool radius (in cells) magma reaches by end of cycle
       const MAGMA_EDGE = 4; // soft falloff width at a pool's edge (cells)
       const MAGMA_SEEDS = 4; // how many pools per cycle
+      const VENT_R = 6; // radius (cells) of a hand-drilled (double-tap) vent
 
       // Project a point (centred gear space, z toward camera = negative) through
       // a yaw/pitch camera + perspective. Returns screen pos, scale and depth.
@@ -366,6 +373,13 @@
         const ct = t - INTRO - EV_FIRST;
         const lt = cyc ? ct % EV_PERIOD : 0;
         const ramp = cyc ? clamp(ct / 5, 0, 1) : 0; // ease in over first ~5s
+
+        // Konami eruption time (applied per-cell, frozen back by the sweep).
+        // Prune drilled vents once fully quenched — a sweep reaches any cell
+        // within one cycle, so anything older than EV_PERIOD is frozen over.
+        const eAge = t - eruptStart;
+        for (let i = userVents.length - 1; i >= 0; i--)
+          if (t - userVents[i].t0 > EV_PERIOD) userVents.splice(i, 1);
 
         // re-roll the magma seeds at the start of each cycle so the pools grow
         // somewhere new. Warp the seed coords by a low-freq field (shared with
@@ -511,6 +525,25 @@
               if (dist < radius)
                 heat = clamp((radius - dist) / MAGMA_EDGE, 0, 1) * ramp;
             }
+            // hand-drilled vents (double-tap): glow from when drilled until the
+            // sweep next reaches this cell (age >= since), which freezes them
+            // over like the rest of the magma — no independent self-heal
+            for (let v = 0; v < userVents.length; v++) {
+              const uv = userVents[v];
+              const age = t - uv.t0;
+              if (age >= since) continue; // cell already refrozen since drilled
+              const d = Math.hypot(cell.c - uv.c, cell.r - uv.r);
+              if (d >= VENT_R) continue;
+              const hv = smoothstep(0, 0.5, age) * clamp(1 - d / VENT_R, 0, 1);
+              if (hv > heat) heat = hv;
+            }
+            // Konami eruption: floods every cell (textured by rnd), then the
+            // sweep freezes it back over — same age < since rule as the vents
+            if (eAge >= 0 && eAge < since)
+              heat = Math.max(
+                heat,
+                smoothstep(0, 0.4, eAge) * (0.6 + cell.rnd * 0.4),
+              );
           }
           const sparkle = Math.max(glint, tw) * (1 - heat * 0.8) + flash * 0.9;
           cell.bloom = sparkle > BLOOM_TH ? sparkle - BLOOM_TH : 0; // cold halo
@@ -774,10 +807,34 @@
       const WOW_URL = "assets/wow.mp3";
       let wowWarm = null;
       // R → toggle rainbow mode (re-render once if motion is paused/reduced)
+      const KONAMI = [
+        "ArrowUp",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowLeft",
+        "ArrowRight",
+        "b",
+        "a",
+      ];
       window.addEventListener("keydown", (e) => {
         if (e.key === "r" || e.key === "R") {
           rainbow = !rainbow;
           document.body.style.background = rainbow ? LIGHT_BG : DARK_BG;
+          if (reduced) render(INTRO, 0);
+        }
+        // Konami code → erupt the whole mark
+        konamiAt =
+          e.key === KONAMI[konamiAt]
+            ? konamiAt + 1
+            : e.key === KONAMI[0]
+              ? 1
+              : 0;
+        if (konamiAt === KONAMI.length) {
+          konamiAt = 0;
+          eruptStart = animT;
           if (reduced) render(INTRO, 0);
         }
       });
@@ -791,6 +848,30 @@
         combo = animT - lastHit < 0.6 ? combo + 1 : 1;
         lastHit = animT;
         if (combo >= 3) spinVel += 14;
+        // double-tap → drill a magma vent at the nearest cell to the tap
+        if (
+          animT - lastTap < 0.32 &&
+          Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 40
+        ) {
+          let best = (G * 0.3) ** 2,
+            bc = null;
+          for (const cell of cells) {
+            const dx = cell.sx - e.clientX,
+              dy = cell.sy - e.clientY;
+            const dd = dx * dx + dy * dy;
+            if (dd < best) {
+              best = dd;
+              bc = cell;
+            }
+          }
+          if (bc && userVents.length < 12)
+            userVents.push({ c: bc.c, r: bc.r, t0: animT });
+          lastTap = -10; // consume so the next tap starts a fresh pair
+        } else {
+          lastTap = animT;
+          lastTapX = e.clientX;
+          lastTapY = e.clientY;
+        }
         // iOS gates deviceorientation behind a user-gesture permission prompt
         const DOE = window.DeviceOrientationEvent;
         if (DOE && typeof DOE.requestPermission === "function") {
