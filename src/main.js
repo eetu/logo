@@ -757,6 +757,7 @@ function toggleRainbow() {
 function fireKonami() {
   eruptStart = animT;
   if (rainbow) unicornStart = animT; // rainbow mode → a unicorn leaps over
+  playWow(); // one "wow" punctuates the reveal (reuses the signature meme)
   if (reduced) render(INTRO, 0);
 }
 
