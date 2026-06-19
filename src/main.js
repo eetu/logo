@@ -1,4 +1,4 @@
-import unicornUrl from "./assets/unicorn.png";
+import unicornUrl from "./assets/unicorn.webp";
 import wowUrl from "./assets/wow.mp3";
 import { COLS, MASK, ROWS } from "./mask.js";
 import {
