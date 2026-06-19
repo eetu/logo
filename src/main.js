@@ -123,6 +123,8 @@ let spin = 0,
   combo = 0;
 let eruptStart = -100; // Konami code → whole mark erupts, then settles
 let konamiAt = 0; // progress through the code
+let rage = 0, // frantic smashing builds rage → screen shake → meltdown
+  lastMelt = -10;
 let unicornStart = -100; // Konami in rainbow mode → unicorn jumps the mark
 const unicornImg = new Image();
 unicornImg.src = unicornUrl;
@@ -229,6 +231,12 @@ function render(t, dt) {
   const sweep = (t / SWEEP) % 1;
   const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
 
+  // smash rage cools when you stop; drives an escalating screen shake
+  rage = Math.max(0, rage - dt * 0.5);
+  const shAmp = rage * rage * 28;
+  const shx = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
+  const shy = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
+
   // freeze cycle: local time within the current cycle, plus a one-off
   // ramp so the magma eases in over the first cycle rather than popping.
   const cyc = !reduced && t > INTRO + EV_FIRST;
@@ -304,6 +312,7 @@ function render(t, dt) {
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (shAmp > 0.5) ctx.translate(shx, shy); // screen shake while smashing
 
   // cached cold glow, modulated by coverage + breathing via globalAlpha
   // (skipped in light/rainbow mode — a dark blue glow looks wrong on white)
@@ -690,6 +699,8 @@ function render(t, dt) {
     }
     ctx.globalAlpha = 1;
   }
+
+  if (shAmp > 0.5) ctx.translate(-shx, -shy); // undo shake → base transform
 }
 
 // Throttle to a fixed frame rate — uncapped rAF burns CPU on 120Hz panels.
@@ -748,6 +759,12 @@ function playWow() {
   wowVoices++;
   src.start();
 }
+// resume the (autoplay-suspended) AudioContext on the first gesture — keydown
+// counts, so going straight to R + Konami (no prior click) still gets the wow
+function unlockAudio() {
+  if (actx && actx.state === "suspended") actx.resume();
+}
+
 // --- shared easter-egg triggers (keyboard + touch gestures) ---
 function toggleRainbow() {
   rainbow = !rainbow;
@@ -767,6 +784,7 @@ const KONAMI = [
   "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a",
 ]; // prettier-ignore
 window.addEventListener("keydown", (e) => {
+  unlockAudio();
   if (e.key === "r" || e.key === "R") toggleRainbow();
   konamiAt =
     e.key === KONAMI[konamiAt] ? konamiAt + 1 : e.key === KONAMI[0] ? 1 : 0;
@@ -783,6 +801,12 @@ function tap(x, y) {
   combo = animT - lastHit < 0.6 ? combo + 1 : 1;
   lastHit = animT;
   if (combo >= 3) spinVel += 14;
+  // smash tier: frantic tapping builds rage; at the top the mark overheats
+  rage = Math.min(1, rage + 0.07);
+  if (rage >= 1 && animT - lastMelt > 3) {
+    lastMelt = animT;
+    eruptStart = animT; // meltdown — you poked the frozen mark until it melted
+  }
   if (animT - lastTap < 0.32 && Math.hypot(x - lastTapX, y - lastTapY) < 40) {
     let best = (G * 0.3) ** 2,
       bc = null;
@@ -857,6 +881,7 @@ window.addEventListener(
   "pointerdown",
   (e) => {
     e.preventDefault();
+    unlockAudio();
     gdown = true;
     gx0 = e.clientX;
     gy0 = e.clientY;
