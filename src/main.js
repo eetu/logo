@@ -25,6 +25,15 @@ const CRYSTAL = ["❆", "❅", "✦", "✳"];
 // twinkle into hearts, stars and blossoms (pastel-tinted, so kept as text)
 const CUTE_CORE = ["·", "♡", "✧", "◌"];
 const CUTE_SPARK = ["♥", "★", "✿", "✦", "❀"];
+// faint hints that surface only after a stretch of inactivity (rewards
+// patience; cycled in the render loop)
+const HINTS = [
+  "a single key turns it to colour",
+  "↑ ↑ ↓ ↓ ← → ← → B A",
+  "draw a circle · or swipe the code",
+  "smash it until it melts",
+  "press S for the dials",
+];
 // magma rendered in the same cell grid as the ice — a density ramp of
 // shade blocks so vents read as molten matter welling up, by heat.
 const MAGMA = ["░", "▒", "▓"];
@@ -157,6 +166,7 @@ for (let i = 0; i < 6; i++)
 const puffs = [];
 const shards = []; // bright ice bits that sparkle off and fall away
 let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
+let lastAct = 0; // animT of the last interaction — drives the idle hint
 const trail = []; // recent pointer path {x,y,t} — fading draw-gesture affordance
 let rainbow = false; // press R — recolour the ice with a swirling rainbow
 // rapid repeated hits spin the gear: each combo hit adds spin velocity,
@@ -813,6 +823,23 @@ function render(t, dt) {
     ctx.globalAlpha = 1;
   }
 
+  // idle hint — after a stretch of no interaction, faintly flash cycling clues
+  // near the bottom (each ~2.5s on, then a gap), so the curious discover the modes
+  const idle = t - lastAct;
+  if (!reduced && idle > 12) {
+    const slot = 6;
+    const k = idle - 12;
+    const a = Math.sin(((k % slot) / slot) * Math.PI); // fade in→out per slot
+    if (a > 0.03) {
+      ctx.save();
+      ctx.globalAlpha = a * 0.4;
+      ctx.fillStyle = rainbow ? "#6a567f" : "#9fb6d8";
+      ctx.font = `${Math.max(11, G * 0.05)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText(HINTS[Math.floor(k / slot) % HINTS.length], cx, vh * 0.9);
+      ctx.restore();
+    }
+  }
+
   if (shAmp > 0.5) ctx.translate(-shx, -shy); // undo shake → base transform
 }
 
@@ -898,6 +925,7 @@ const KONAMI = [
 ]; // prettier-ignore
 window.addEventListener("keydown", (e) => {
   unlockAudio();
+  lastAct = animT;
   if (e.key === "r" || e.key === "R") toggleRainbow();
   if (e.key === "s" || e.key === "S") togglePanel();
   if (e.key === "Escape" && panelEl) togglePanel();
@@ -1078,6 +1106,7 @@ window.addEventListener(
     if (panelEl && panelEl.contains(e.target)) return; // let the sliders work
     e.preventDefault();
     unlockAudio();
+    lastAct = animT;
     gdown = true;
     gx0 = e.clientX;
     gy0 = e.clientY;
@@ -1176,3 +1205,19 @@ if (reduced) {
 } else {
   start();
 }
+
+// breadcrumb for the curious who open the console
+console.log(
+  "%c❄ invinite · frozen mark\n" +
+    "%cyou opened the console — of course you did. a few cold secrets:\n" +
+    "%c  ✦ one key turns the world to colour\n" +
+    "  ✦ ↑ ↑ ↓ ↓ ← → ← → B A  — the old code still bites\n" +
+    "  ✦ on glass: trace a halo, or swipe the code\n" +
+    "  ✦ patience freezes it; impatience melts it down\n" +
+    "  ✦ poke twice to drill · press S for the dials\n" +
+    "%c  → github.com/eetu/logo",
+  "color:#9cd2ff;font-weight:bold;font-size:14px",
+  "color:#7f93b5",
+  "color:#cfe0f5;line-height:1.6",
+  "color:#6a7da0",
+);
