@@ -978,8 +978,10 @@ function isRewind(pts) {
 // changes apply live. Compact single-line rows (label · slider · value).
 const TUNABLES = [
   { l: "light orbit", s: 4, x: 30, st: 0.5, g: () => SWEEP, p: (v) => (SWEEP = v) },
-  { l: "shine", s: 2, x: 40, st: 1, g: () => SHINE, p: (v) => (SHINE = v) },
-  { l: "bloom", s: 0.1, x: 0.95, st: 0.05, g: () => BLOOM_TH, p: (v) => (BLOOM_TH = v) },
+  // these read as intuitive 0..1 "amount" (right/bigger = more) — the
+  // underlying SHINE/BLOOM_TH/damp/decay are inverse, mapped in get/set
+  { l: "shine", s: 0, x: 1, st: 0.05, g: () => (40 - SHINE) / 36, p: (v) => (SHINE = 40 - v * 36) },
+  { l: "bloom", s: 0, x: 1, st: 0.05, g: () => (0.95 - BLOOM_TH) / 0.85, p: (v) => (BLOOM_TH = 0.95 - v * 0.85) },
   { l: "cycle s", s: 6, x: 40, st: 1, g: () => EV_PERIOD, p: (v) => (EV_PERIOD = v) },
   { l: "sweep s", s: 1.5, x: 8, st: 0.5, g: () => EV_DUR, p: (v) => (EV_DUR = v) },
   { l: "cold s", s: 0, x: 6, st: 0.5, g: () => HEAT_DELAY, p: (v) => (HEAT_DELAY = v) },
@@ -988,9 +990,9 @@ const TUNABLES = [
   { l: "seeds", s: 1, x: 10, st: 1, g: () => MAGMA_SEEDS, p: (v) => (MAGMA_SEEDS = v) },
   { l: "unicorn s", s: 1, x: 5, st: 0.1, g: () => UNICORN_DUR, p: (v) => (UNICORN_DUR = v) },
   { l: "spin", s: 4, x: 30, st: 1, g: () => SPIN_IMPULSE, p: (v) => (SPIN_IMPULSE = v) },
-  { l: "spin damp", s: 0.5, x: 4, st: 0.1, g: () => SPIN_DAMP, p: (v) => (SPIN_DAMP = v) },
+  { l: "spin keep", s: 0, x: 1, st: 0.05, g: () => (4 - SPIN_DAMP) / 3.5, p: (v) => (SPIN_DAMP = 4 - v * 3.5) },
   { l: "rage +", s: 0.02, x: 0.4, st: 0.01, g: () => RAGE_BUILD, p: (v) => (RAGE_BUILD = v) },
-  { l: "rage −", s: 0.1, x: 1.5, st: 0.05, g: () => RAGE_DECAY, p: (v) => (RAGE_DECAY = v) },
+  { l: "rage hold", s: 0, x: 1, st: 0.05, g: () => (1.5 - RAGE_DECAY) / 1.4, p: (v) => (RAGE_DECAY = 1.5 - v * 1.4) },
   { l: "shake", s: 0, x: 70, st: 2, g: () => SHAKE_AMP, p: (v) => (SHAKE_AMP = v) },
   { l: "flakes", s: 20, x: 320, st: 10, g: () => MAX_SHARDS, p: (v) => (MAX_SHARDS = v) },
   { l: "vapour", s: 0, x: 2, st: 0.1, g: () => PQ_MUL, p: (v) => (PQ_MUL = v) },
