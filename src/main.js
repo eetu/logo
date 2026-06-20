@@ -76,7 +76,8 @@ const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // and a retina canvas multiplies every blended pixel. On touch devices cap
 // the canvas resolution lower and thin the particle budget.
 const coarse = window.matchMedia("(pointer: coarse)").matches;
-const DPR_CAP = coarse ? 1.25 : 1.5;
+const DPR_CAP = coarse ? 2 : 1.5; // sprites need the resolution; glyphs alone
+//   tolerated 1.25, but the candy/unicorn images went clunky on retina phones
 const PQ = coarse ? 0.4 : 0.6; // vapour budget multiplier
 
 // Soft vapour sprites (cryo fog) pre-rendered once — a cool one for the
@@ -212,6 +213,7 @@ function layout() {
   canvas.style.width = vw + "px";
   canvas.style.height = vh + "px";
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = "high"; // smoother sprite up/downscaling
 
   G = Math.min(vw, vh) * 0.62;
   cellW = G / COLS;
