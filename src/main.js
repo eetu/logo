@@ -9,6 +9,7 @@ import {
   iceColor,
   LIGHT_BG,
   mix,
+  PASTELS,
   smoothstep,
 } from "./util.js";
 
@@ -91,10 +92,12 @@ const vapor = makeVapor([
   [0.4, "rgba(180,212,250,0.35)"],
   [1, "rgba(150,190,240,0)"],
 ]);
+// light-theme vapour reads as soft white clouds (grey mist looked dirty on the
+// pastel wash), with a faint warm tint
 const vaporLight = makeVapor([
-  [0, "rgba(150,150,170,0.6)"],
-  [0.4, "rgba(140,140,165,0.25)"],
-  [1, "rgba(140,140,165,0)"],
+  [0, "rgba(255,255,255,0.85)"],
+  [0.45, "rgba(252,244,255,0.4)"],
+  [1, "rgba(250,240,255,0)"],
 ]);
 
 // Cold bloom sprite — a tight bright halo drawn additively over the
@@ -110,6 +113,34 @@ bloom.width = bloom.height = 48;
   bc.fillStyle = bg;
   bc.fillRect(0, 0, 48, 48);
 }
+
+// drifting pastel background blobs (light/rainbow theme) — one soft sprite per
+// Unicorn-palette colour, pre-rendered once, then a handful drift + pulse.
+const blobSprites = PASTELS.map((col) => {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const c = cv.getContext("2d");
+  const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+  const r = parseInt(col.slice(1, 3), 16),
+    gr = parseInt(col.slice(3, 5), 16),
+    b = parseInt(col.slice(5, 7), 16);
+  g.addColorStop(0, `rgba(${r},${gr},${b},0.5)`);
+  g.addColorStop(1, `rgba(${r},${gr},${b},0)`);
+  c.fillStyle = g;
+  c.fillRect(0, 0, 128, 128);
+  return cv;
+});
+const blobs = []; // {nx,ny,vx,vy,r,sprite,ph} in normalized 0..1 coords
+for (let i = 0; i < 6; i++)
+  blobs.push({
+    nx: Math.random(),
+    ny: Math.random(),
+    vx: (Math.random() - 0.5) * 0.03, // slow drift, screens/sec
+    vy: (Math.random() - 0.5) * 0.03,
+    r: 0.42 + Math.random() * 0.5, // radius in units of G
+    sprite: blobSprites[(Math.random() * blobSprites.length) | 0],
+    ph: Math.random() * Math.PI * 2,
+  });
 const puffs = [];
 const shards = []; // bright ice bits that sparkle off and fall away
 let poke = null; // pending {x,y} tap — knocks flakes off the mark nearby
@@ -321,6 +352,29 @@ function render(t, dt) {
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // light/rainbow theme: soft pastel blobs drift behind everything (drawn
+  // before the shake translate so the background stays calm while the mark
+  // shudders). The pale page bg shows through the gaps.
+  if (rainbow) {
+    for (const bl of blobs) {
+      bl.nx += bl.vx * dt;
+      bl.ny += bl.vy * dt;
+      if (bl.nx < -0.3) bl.nx = 1.3;
+      else if (bl.nx > 1.3) bl.nx = -0.3;
+      if (bl.ny < -0.3) bl.ny = 1.3;
+      else if (bl.ny > 1.3) bl.ny = -0.3;
+      const rad = bl.r * G * (1 + 0.12 * Math.sin(t * 0.4 + bl.ph));
+      ctx.drawImage(
+        bl.sprite,
+        bl.nx * vw - rad,
+        bl.ny * vh - rad,
+        rad * 2,
+        rad * 2,
+      );
+    }
+  }
+
   if (shAmp > 0.5) ctx.translate(shx, shy); // screen shake while smashing
 
   // cached cold glow, modulated by coverage + breathing via globalAlpha
@@ -590,6 +644,7 @@ function render(t, dt) {
         vy: -(hot ? 16 : 10) - Math.random() * 28, // chip up, then falls
         phase: Math.random() * Math.PI * 2,
         glyph: src.crystal,
+        pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
       });
       if (shards.length >= MAX_SHARDS) break;
     }
@@ -617,14 +672,15 @@ function render(t, dt) {
         vy: (ddy / dist) * spd - 70 - Math.random() * 90, // out + pop up
         phase: Math.random() * Math.PI * 2,
         glyph: cell.crystal,
+        pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
       });
     }
     poke = null;
   }
 
   ctx.font = `${fontSize * 0.72}px ui-monospace, Menlo, monospace`;
-  // bright ice on dark; a slate tint so flakes still read on the light bg
-  ctx.fillStyle = rainbow ? "rgb(120,128,160)" : "rgb(226,242,255)";
+  // bright ice on dark; pastel sparkles (per-shard hue) on the light theme
+  if (!rainbow) ctx.fillStyle = "rgb(226,242,255)";
   for (let i = shards.length - 1; i >= 0; i--) {
     const s = shards[i];
     s.vy += 210 * dt; // gravity
@@ -636,6 +692,7 @@ function render(t, dt) {
     }
     const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
     ctx.globalAlpha = twk;
+    if (rainbow) ctx.fillStyle = s.pc;
     ctx.fillText(s.glyph, s.x, s.y);
   }
   ctx.globalAlpha = 1;

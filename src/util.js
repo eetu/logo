@@ -32,8 +32,17 @@ export const heatColor = (p) =>
 // rainbow easter egg (press R): light theme + pastel hue ramp
 export const DARK_BG =
   "radial-gradient(120% 120% at 50% 40%, #0d1426 0%, #080d1a 55%, #05080f 100%)";
+// airy near-white pastel wash — the drifting blobs (drawn on canvas) supply the
+// colour, so the page bg stays pale to let them glow
 export const LIGHT_BG =
-  "radial-gradient(120% 120% at 50% 40%, #dcefff 0%, #c4e2fb 55%, #aed4f5 100%)";
+  "radial-gradient(120% 120% at 50% 35%, #fdf4fb 0%, #f1f1ff 55%, #e6f4ff 100%)";
+
+// "Unicorn" pastel palette (lavender→pink→coral→butter→mint→sky→seafoam→peach)
+// — drives the light-theme blobs, shards and sparkles.
+export const PASTELS = [
+  "#c9b6f2", "#f7c3e0", "#f6a6a0", "#f7e7a0", "#b9efc8",
+  "#aee3f5", "#a3e0cf", "#f8d2a8", "#f4a9c0", "#c7e6f7",
+]; // prettier-ignore
 const hue2 = (p, q, t) => {
   if (t < 0) t += 1;
   if (t > 1) t -= 1;
