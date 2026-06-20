@@ -19,6 +19,10 @@ import {
 
 const CORE = ["+", "·", "*", "◦"];
 const CRYSTAL = ["❆", "❅", "✦", "✳"];
+// rainbow mode swaps in cuter glyphs: a calm field of dots/heart-outlines that
+// twinkle into hearts, stars and blossoms (pastel-tinted, so kept as text)
+const CUTE_CORE = ["·", "♡", "✧", "◌"];
+const CUTE_SPARK = ["♥", "★", "✿", "✦", "❀"];
 // magma rendered in the same cell grid as the ice — a density ramp of
 // shade blocks so vents read as molten matter welling up, by heat.
 const MAGMA = ["░", "▒", "▓"];
@@ -65,6 +69,8 @@ for (let r = 0; r < ROWS; r++) {
       phase: rnd * Math.PI * 2,
       core: CORE[h % CORE.length],
       crystal: CRYSTAL[(h >>> 3) % CRYSTAL.length],
+      rcore: CUTE_CORE[h % CUTE_CORE.length], // rainbow-mode glyphs
+      rcrystal: CUTE_SPARK[(h >>> 3) % CUTE_SPARK.length],
     });
   }
 }
@@ -536,12 +542,17 @@ function render(t, dt) {
       appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) + heat * 0.35;
     if (rainbow) alpha *= 1.5; // pastels need to be more opaque on light bg
     ctx.globalAlpha = Math.min(1, alpha);
+    const spark = sparkle > 0.42;
     const glyph =
       heat > 0.28
         ? magmaGlyph(heat)
-        : sparkle > 0.42
-          ? cell.crystal
-          : cell.core;
+        : rainbow
+          ? spark
+            ? cell.rcrystal
+            : cell.rcore
+          : spark
+            ? cell.crystal
+            : cell.core;
     // a dark outline gives the pastel glyphs definition against light bg
     if (rainbow) {
       ctx.strokeStyle = "rgba(34,26,52,0.5)";
