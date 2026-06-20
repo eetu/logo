@@ -1,3 +1,5 @@
+import cottonUrl from "./assets/cotton.webp";
+import spiralUrl from "./assets/spiral.webp";
 import unicornUrl from "./assets/unicorn.webp";
 import wowUrl from "./assets/wow.mp3";
 import { COLS, MASK, ROWS } from "./mask.js";
@@ -159,6 +161,10 @@ let rage = 0, // frantic smashing builds rage → screen shake → meltdown
 let unicornStart = -100; // Konami in rainbow mode → unicorn jumps the mark
 const unicornImg = new Image();
 unicornImg.src = unicornUrl;
+// rainbow-mode shards render as these candies (cotton candy + spiral marshmallow)
+const candyImgs = [new Image(), new Image()];
+candyImgs[0].src = cottonUrl;
+candyImgs[1].src = spiralUrl;
 const userVents = []; // double-tap drills a magma vent at that spot
 let lastTap = -10,
   lastTapX = 0,
@@ -645,6 +651,8 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: src.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
+        candy: (Math.random() * 2) | 0, // rainbow: which candy sprite
+        spin: (Math.random() - 0.5) * 4, // tumble rate
       });
       if (shards.length >= MAX_SHARDS) break;
     }
@@ -673,14 +681,15 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: cell.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
+        candy: (Math.random() * 2) | 0,
+        spin: (Math.random() - 0.5) * 4,
       });
     }
     poke = null;
   }
 
   ctx.font = `${fontSize * 0.72}px ui-monospace, Menlo, monospace`;
-  // bright ice on dark; pastel sparkles (per-shard hue) on the light theme
-  if (!rainbow) ctx.fillStyle = "rgb(226,242,255)";
+  if (!rainbow) ctx.fillStyle = "rgb(226,242,255)"; // bright ice on dark
   for (let i = shards.length - 1; i >= 0; i--) {
     const s = shards[i];
     s.vy += 210 * dt; // gravity
@@ -691,9 +700,23 @@ function render(t, dt) {
       continue;
     }
     const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
-    ctx.globalAlpha = twk;
-    if (rainbow) ctx.fillStyle = s.pc;
-    ctx.fillText(s.glyph, s.x, s.y);
+    const candy = rainbow && candyImgs[s.candy];
+    if (candy && candy.complete && candy.naturalWidth) {
+      // rainbow theme: a tumbling cotton candy / spiral marshmallow
+      const w = fontSize * 2.1;
+      const h = (w * candy.naturalHeight) / candy.naturalWidth;
+      ctx.globalAlpha = Math.min(1, 0.65 + 0.45 * twk);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.phase + t * s.spin);
+      ctx.drawImage(candy, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else {
+      // dark theme (or sprite still loading): a twinkling crystal glyph
+      ctx.globalAlpha = twk;
+      if (rainbow) ctx.fillStyle = s.pc;
+      ctx.fillText(s.glyph, s.x, s.y);
+    }
   }
   ctx.globalAlpha = 1;
 
