@@ -1,4 +1,5 @@
 import cottonUrl from "./assets/cotton.webp";
+import marshUrl from "./assets/marsh.webp";
 import spiralUrl from "./assets/spiral.webp";
 import unicornUrl from "./assets/unicorn.webp";
 import wowUrl from "./assets/wow.mp3";
@@ -161,10 +162,12 @@ let rage = 0, // frantic smashing builds rage → screen shake → meltdown
 let unicornStart = -100; // Konami in rainbow mode → unicorn jumps the mark
 const unicornImg = new Image();
 unicornImg.src = unicornUrl;
-// rainbow-mode shards render as these candies (cotton candy + spiral marshmallow)
-const candyImgs = [new Image(), new Image()];
+// rainbow-mode shards render as these candies (cotton candy, spiral lollipop,
+// swirled marshmallow)
+const candyImgs = [new Image(), new Image(), new Image()];
 candyImgs[0].src = cottonUrl;
 candyImgs[1].src = spiralUrl;
+candyImgs[2].src = marshUrl;
 const userVents = []; // double-tap drills a magma vent at that spot
 let lastTap = -10,
   lastTapX = 0,
@@ -651,7 +654,7 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: src.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
-        candy: (Math.random() * 2) | 0, // rainbow: which candy sprite
+        candy: (Math.random() * 3) | 0, // rainbow: which candy sprite
         spin: (Math.random() - 0.5) * 4, // tumble rate
       });
       if (shards.length >= MAX_SHARDS) break;
@@ -681,7 +684,7 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: cell.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
-        candy: (Math.random() * 2) | 0,
+        candy: (Math.random() * 3) | 0,
         spin: (Math.random() - 0.5) * 4,
       });
     }
@@ -702,8 +705,8 @@ function render(t, dt) {
     const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
     const candy = rainbow && candyImgs[s.candy];
     if (candy && candy.complete && candy.naturalWidth) {
-      // rainbow theme: a tumbling cotton candy / spiral marshmallow
-      const w = fontSize * 2.1;
+      // rainbow theme: a tumbling cotton candy / lollipop / marshmallow
+      const w = fontSize * 1.7;
       const h = (w * candy.naturalHeight) / candy.naturalWidth;
       ctx.globalAlpha = Math.min(1, 0.65 + 0.45 * twk);
       ctx.save();
