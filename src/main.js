@@ -1,3 +1,4 @@
+import cometUrl from "./assets/comet.webp";
 import cottonUrl from "./assets/cotton.webp";
 import donutUrl from "./assets/donut.webp";
 import marshUrl from "./assets/marsh.webp";
@@ -171,6 +172,8 @@ let rage = 0, // frantic smashing builds rage → screen shake → meltdown
 let unicornStart = -100; // Konami in rainbow mode → unicorn jumps the mark
 const unicornImg = new Image();
 unicornImg.src = unicornUrl;
+const cometImg = new Image(); // frozen-mode Konami fly-over (dark theme)
+cometImg.src = cometUrl;
 // rainbow-mode shards render as these candies (cotton candy, spiral lollipop,
 // swirled marshmallow, rainbow marshmallow, sprinkle donut)
 const candyImgs = [
@@ -746,25 +749,19 @@ function render(t, dt) {
   }
   ctx.globalAlpha = 1;
 
-  // unicorn easter egg: Konami while in rainbow mode → a cartoon unicorn
-  // leaps over the mark on a parabolic arc (left→right, tilting with the arc)
-  if (rainbow && unicornImg.complete && unicornImg.naturalWidth) {
+  // Konami fly-over: a unicorn (rainbow) or a comet (frozen) arcs over the mark
+  // on a parabola, trailing a fading ribbon — rainbow stripes / icy comet tail
+  const fly = rainbow ? unicornImg : cometImg;
+  if (fly.complete && fly.naturalWidth) {
     const up = (t - unicornStart) / UNICORN_DUR;
     if (up >= 0 && up <= 1) {
-      const uw = G * 0.5;
-      const uh = (uw * unicornImg.naturalHeight) / unicornImg.naturalWidth;
+      const uw = (rainbow ? 0.5 : 0.34) * G;
+      const uh = (uw * fly.naturalHeight) / fly.naturalWidth;
       const ux = mix(-uw, vw + uw, up); // enters left, exits right
       const uy = cy + G * 0.25 - G * 0.85 * Math.sin(up * Math.PI); // arcs over
-      // rainbow ribbon trailing the leap: sample the arc behind the unicorn and
-      // stroke fading rainbow stripes (drawn under the sprite)
-      const RB = [
-        "#ff5a5a",
-        "#ff9e3b",
-        "#ffe23b",
-        "#46d65a",
-        "#4a8cff",
-        "#9b5bff",
-      ];
+      const RB = rainbow
+        ? ["#ff5a5a", "#ff9e3b", "#ffe23b", "#46d65a", "#4a8cff", "#9b5bff"]
+        : ["#eaf4ff", "#cfe6ff", "#a9d2f5", "#86b8ec"]; // icy tail
       const s0 = Math.max(0, up - 0.5);
       const sw = Math.max(2, uh * 0.1);
       const tx = mix(-uw, vw + uw, s0);
@@ -776,7 +773,7 @@ function render(t, dt) {
         const off = (i - (RB.length - 1) / 2) * sw;
         const g = ctx.createLinearGradient(tx, ty, ux, uy);
         g.addColorStop(0, RB[i] + "00"); // transparent at the tail
-        g.addColorStop(1, RB[i] + "aa"); // ~0.67 alpha behind the unicorn
+        g.addColorStop(1, RB[i] + "aa"); // ~0.67 alpha behind the sprite
         ctx.strokeStyle = g;
         ctx.beginPath();
         for (let k = 0; k <= 16; k++) {
@@ -790,8 +787,9 @@ function render(t, dt) {
       }
       ctx.save();
       ctx.translate(ux, uy);
-      ctx.rotate(-Math.cos(up * Math.PI) * 0.25); // nose up rising, down falling
-      ctx.drawImage(unicornImg, -uw / 2, -uh / 2, uw, uh);
+      // unicorn tilts nose-up/down with the arc; the comet tumbles/twinkles
+      ctx.rotate(rainbow ? -Math.cos(up * Math.PI) * 0.25 : up * Math.PI * 2);
+      ctx.drawImage(fly, -uw / 2, -uh / 2, uw, uh);
       ctx.restore();
     }
   }
@@ -888,7 +886,7 @@ function toggleRainbow() {
 }
 function fireKonami() {
   eruptStart = animT;
-  if (rainbow) unicornStart = animT; // rainbow mode → a unicorn leaps over
+  unicornStart = animT; // fly-over: unicorn in rainbow, comet in frozen mode
   playWow(); // one "wow" punctuates the reveal (reuses the signature meme)
   if (reduced) render(INTRO, 0);
 }
