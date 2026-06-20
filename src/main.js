@@ -192,26 +192,35 @@ layout();
 window.addEventListener("resize", layout);
 
 const INTRO = 3.2; // frost-in seconds
-const SWEEP = 14.0; // light-orbit seconds
+// Tunables below are `let` so the hidden settings panel (press S / pull-down
+// gesture) can tweak them live; defaults are the shipped values.
+let SWEEP = 14.0; // light-orbit seconds
 const LIGHT_EL = 1.0; // light elevation from the view axis (rad)
-const SHINE = 18; // specular tightness — higher = tighter glint
-const BLOOM_TH = 0.5; // sparkle above this gets an additive halo
-const MAX_SHARDS = coarse ? 90 : 160; // live flake cap (lower on touch)
+let SHINE = 18; // specular tightness — higher = tighter glint
+let BLOOM_TH = 0.5; // sparkle above this gets an additive halo
+let MAX_SHARDS = coarse ? 90 : 160; // live flake cap (lower on touch)
 
 // freeze cycle: the surface slowly degrades — magma veins grow up through
 // the ice (driving steam + flaking) — then a fast sweep lays down fresh ice
 // and quenches them. A cell is refreshed when the sweep front passes its
 // `u`; the longer since, the higher the magma floods (see the draw loop).
-const EV_PERIOD = 22; // full degrade → refresh cycle (s)
-const EV_DUR = 4.5; // fast refresh sweep crossing time (s)
+let EV_PERIOD = 22; // full degrade → refresh cycle (s)
+let EV_DUR = 4.5; // fast refresh sweep crossing time (s)
 const EV_FIRST = 3; // grace after intro before the first cycle
-const HEAT_DELAY = 2; // fresh ice stays cold this long after a refresh (s)
+let HEAT_DELAY = 2; // fresh ice stays cold this long after a refresh (s)
 const EV_FLASH = 0.7; // crystallization sparkle as the fresh ice forms (s)
-const MAGMA_R = 11; // pool radius (in cells) magma reaches by end of cycle
-const MAGMA_EDGE = 4; // soft falloff width at a pool's edge (cells)
-const MAGMA_SEEDS = 4; // how many pools per cycle
+let MAGMA_R = 11; // pool radius (in cells) magma reaches by end of cycle
+let MAGMA_EDGE = 4; // soft falloff width at a pool's edge (cells)
+let MAGMA_SEEDS = 4; // how many pools per cycle
 const VENT_R = 6; // radius (cells) of a hand-drilled (double-tap) vent
-const UNICORN_DUR = 2.2; // seconds for the unicorn to arc across the screen
+let UNICORN_DUR = 2.2; // seconds for the unicorn to arc across the screen
+// fun-tier feel knobs (also panel-tweakable)
+let SPIN_IMPULSE = 14; // yaw velocity added per rapid-hit
+let SPIN_DAMP = 1.8; // spin decay rate
+let RAGE_BUILD = 0.14; // rage gained per frantic tap
+let RAGE_DECAY = 0.4; // rage cooled per second
+let SHAKE_AMP = 34; // max screen-shake amplitude (px)
+let PQ_MUL = 1; // extra vapour budget multiplier on top of the device PQ
 
 // Project a point (centred gear space, z toward camera = negative) through
 // a yaw/pitch camera + perspective. Returns screen pos, scale and depth.
@@ -232,8 +241,8 @@ function render(t, dt) {
   const breathe = 0.85 + 0.15 * Math.sin(t * 0.9);
 
   // smash rage cools when you stop; drives an escalating screen shake
-  rage = Math.max(0, rage - dt * 0.4);
-  const shAmp = rage * rage * 34;
+  rage = Math.max(0, rage - dt * RAGE_DECAY);
+  const shAmp = rage * rage * SHAKE_AMP;
   const shx = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
   const shy = shAmp > 0.5 ? (Math.random() - 0.5) * shAmp : 0;
 
@@ -302,7 +311,7 @@ function render(t, dt) {
 
   // spin decays each frame; once slow, a spring eases it to the nearest
   // full turn so the gear never rests edge-on (added into yaw below)
-  spinVel *= Math.exp(-dt * 1.8);
+  spinVel *= Math.exp(-dt * SPIN_DAMP);
   const spinTarget = Math.round(spin / (Math.PI * 2)) * (Math.PI * 2);
   if (Math.abs(spinVel) < 2) spinVel += (spinTarget - spin) * dt * 5;
   spin += spinVel * dt;
@@ -490,7 +499,7 @@ function render(t, dt) {
 
   // --- cryo vapour: spills off the cold surface, drifts and sinks ---
   if (!reduced && cov > 0.35) {
-    const want = 36 * PQ * dt; // puffs/sec (thinned on touch devices)
+    const want = 36 * PQ * PQ_MUL * dt; // puffs/sec (thinned on touch devices)
     for (let n = 0; n < want || Math.random() < want - Math.floor(want); n++) {
       if (n >= 200) break;
       // bias toward the upper surface — vapour rises off the top
@@ -520,7 +529,7 @@ function render(t, dt) {
   // hot steam: magma vents boil off vapour that rises fast — sourced from
   // whichever cells are currently glowing (cell.heat set in the draw pass)
   if (cyc && cov > 0.35) {
-    const want = 90 * PQ * dt;
+    const want = 90 * PQ * PQ_MUL * dt;
     for (let n = 0; n < want || Math.random() < want - Math.floor(want); n++) {
       if (n >= 60) break;
       const src = cells[(Math.random() * cells.length) | 0];
@@ -786,6 +795,8 @@ const KONAMI = [
 window.addEventListener("keydown", (e) => {
   unlockAudio();
   if (e.key === "r" || e.key === "R") toggleRainbow();
+  if (e.key === "s" || e.key === "S") togglePanel();
+  if (e.key === "Escape" && panelEl) togglePanel();
   konamiAt =
     e.key === KONAMI[konamiAt] ? konamiAt + 1 : e.key === KONAMI[0] ? 1 : 0;
   if (konamiAt === KONAMI.length) {
@@ -800,9 +811,9 @@ function tap(x, y) {
   poke = { x, y }; // released as flakes next frame
   combo = animT - lastHit < 0.6 ? combo + 1 : 1;
   lastHit = animT;
-  if (combo >= 3) spinVel += 14;
+  if (combo >= 3) spinVel += SPIN_IMPULSE;
   // smash tier: frantic tapping builds rage; at the top the mark overheats
-  rage = Math.min(1, rage + 0.14);
+  rage = Math.min(1, rage + RAGE_BUILD);
   if (rage >= 1 && animT - lastMelt > 3) {
     lastMelt = animT;
     eruptStart = animT; // meltdown — you poked the frozen mark until it melted
@@ -877,9 +888,88 @@ function isRewind(pts) {
   );
 }
 
+// --- hidden settings panel (press S, or pull down from the top edge) ---
+// Each tunable is a `let` above; the schema reads/writes it via closures so
+// changes apply live. Compact single-line rows (label · slider · value).
+const TUNABLES = [
+  { l: "light orbit", s: 4, x: 30, st: 0.5, g: () => SWEEP, p: (v) => (SWEEP = v) },
+  { l: "shine", s: 2, x: 40, st: 1, g: () => SHINE, p: (v) => (SHINE = v) },
+  { l: "bloom", s: 0.1, x: 0.95, st: 0.05, g: () => BLOOM_TH, p: (v) => (BLOOM_TH = v) },
+  { l: "cycle s", s: 6, x: 40, st: 1, g: () => EV_PERIOD, p: (v) => (EV_PERIOD = v) },
+  { l: "sweep s", s: 1.5, x: 8, st: 0.5, g: () => EV_DUR, p: (v) => (EV_DUR = v) },
+  { l: "cold s", s: 0, x: 6, st: 0.5, g: () => HEAT_DELAY, p: (v) => (HEAT_DELAY = v) },
+  { l: "magma r", s: 3, x: 22, st: 1, g: () => MAGMA_R, p: (v) => (MAGMA_R = v) },
+  { l: "magma edge", s: 1, x: 8, st: 0.5, g: () => MAGMA_EDGE, p: (v) => (MAGMA_EDGE = v) },
+  { l: "seeds", s: 1, x: 10, st: 1, g: () => MAGMA_SEEDS, p: (v) => (MAGMA_SEEDS = v) },
+  { l: "unicorn s", s: 1, x: 5, st: 0.1, g: () => UNICORN_DUR, p: (v) => (UNICORN_DUR = v) },
+  { l: "spin", s: 4, x: 30, st: 1, g: () => SPIN_IMPULSE, p: (v) => (SPIN_IMPULSE = v) },
+  { l: "spin damp", s: 0.5, x: 4, st: 0.1, g: () => SPIN_DAMP, p: (v) => (SPIN_DAMP = v) },
+  { l: "rage +", s: 0.02, x: 0.4, st: 0.01, g: () => RAGE_BUILD, p: (v) => (RAGE_BUILD = v) },
+  { l: "rage −", s: 0.1, x: 1.5, st: 0.05, g: () => RAGE_DECAY, p: (v) => (RAGE_DECAY = v) },
+  { l: "shake", s: 0, x: 70, st: 2, g: () => SHAKE_AMP, p: (v) => (SHAKE_AMP = v) },
+  { l: "flakes", s: 20, x: 320, st: 10, g: () => MAX_SHARDS, p: (v) => (MAX_SHARDS = v) },
+  { l: "vapour", s: 0, x: 2, st: 0.1, g: () => PQ_MUL, p: (v) => (PQ_MUL = v) },
+]; // prettier-ignore
+let panelEl = null;
+function buildPanel() {
+  const wrap = document.createElement("div");
+  wrap.style.cssText =
+    "position:fixed;top:8px;right:8px;z-index:50;width:230px;max-height:86vh;" +
+    "overflow:auto;background:rgba(10,16,30,.92);color:#cfe0f5;font:11px/1.5 " +
+    "ui-monospace,Menlo,monospace;padding:8px 10px;border:1px solid #2c3a57;" +
+    "border-radius:8px;backdrop-filter:blur(4px);touch-action:auto;" +
+    "box-shadow:0 6px 24px rgba(0,0,0,.5)";
+  const head = document.createElement("div");
+  head.textContent = "tweak · tap to close";
+  head.style.cssText =
+    "opacity:.6;margin-bottom:6px;cursor:pointer;user-select:none";
+  head.addEventListener("click", togglePanel);
+  wrap.appendChild(head);
+  const repaint = () => {
+    if (reduced) render(INTRO, 0);
+  };
+  for (const tn of TUNABLES) {
+    const dec = tn.st < 1 ? (String(tn.st).split(".")[1] || "").length : 0;
+    const row = document.createElement("label");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;margin:2px 0";
+    const name = document.createElement("span");
+    name.textContent = tn.l;
+    name.style.cssText = "flex:0 0 64px";
+    const val = document.createElement("span");
+    val.style.cssText = "flex:0 0 34px;text-align:right;color:#8fd0ff";
+    const sl = document.createElement("input");
+    sl.type = "range";
+    sl.min = tn.s;
+    sl.max = tn.x;
+    sl.step = tn.st;
+    sl.value = tn.g();
+    sl.style.cssText = "flex:1;min-width:0;accent-color:#5a9cff";
+    val.textContent = tn.g().toFixed(dec);
+    sl.addEventListener("input", () => {
+      const v = parseFloat(sl.value);
+      tn.p(v);
+      val.textContent = v.toFixed(dec);
+      repaint();
+    });
+    row.append(name, sl, val);
+    wrap.appendChild(row);
+  }
+  document.body.appendChild(wrap);
+  return wrap;
+}
+function togglePanel() {
+  if (panelEl) {
+    panelEl.remove();
+    panelEl = null;
+  } else {
+    panelEl = buildPanel();
+  }
+}
+
 window.addEventListener(
   "pointerdown",
   (e) => {
+    if (panelEl && panelEl.contains(e.target)) return; // let the sliders work
     e.preventDefault();
     unlockAudio();
     gdown = true;
@@ -904,6 +994,7 @@ window.addEventListener(
 window.addEventListener(
   "pointermove",
   (e) => {
+    if (panelEl && panelEl.contains(e.target)) return; // don't tilt while tweaking
     if (!reduced) {
       pnx = clamp((e.clientX / vw - 0.5) * 2, -1, 1); // gear leans toward pointer
       pny = clamp((e.clientY / vh - 0.5) * 2, -1, 1);
@@ -926,6 +1017,12 @@ window.addEventListener("pointerup", (e) => {
     dist = Math.hypot(dx, dy);
   if (isRewind(gpts)) {
     toggleRainbow(); // CW+CCW loop → rainbow
+  } else if (
+    gy0 < 60 &&
+    dy > Math.min(vw, vh) * 0.25 &&
+    Math.abs(dy) > Math.abs(dx) * 1.5
+  ) {
+    togglePanel(); // pull down from the top edge → settings
   } else if (dist >= Math.min(vw, vh) * 0.08) {
     // a swipe → next Konami direction
     const dir =
