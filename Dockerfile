@@ -6,7 +6,7 @@
 #
 # nginx-unprivileged runs as a non-root user on port 8080 — friendly to rootless
 # podman and restrictive kube security contexts.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/ .yarn/
