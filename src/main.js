@@ -1,6 +1,8 @@
+import candyUrl from "./assets/candy.webp";
 import cometUrl from "./assets/comet.webp";
 import cottonUrl from "./assets/cotton.webp";
 import donutUrl from "./assets/donut.webp";
+import heartUrl from "./assets/heart.webp";
 import marshUrl from "./assets/marsh.webp";
 import rainbowMarshUrl from "./assets/rainbow.webp";
 import spiralUrl from "./assets/spiral.webp";
@@ -175,8 +177,10 @@ unicornImg.src = unicornUrl;
 const cometImg = new Image(); // frozen-mode Konami fly-over (dark theme)
 cometImg.src = cometUrl;
 // rainbow-mode shards render as these candies (cotton candy, spiral lollipop,
-// swirled marshmallow, rainbow marshmallow, sprinkle donut)
+// swirled marshmallow, rainbow marshmallow, sprinkle donut, wrapped bonbon, heart)
 const candyImgs = [
+  new Image(),
+  new Image(),
   new Image(),
   new Image(),
   new Image(),
@@ -188,6 +192,8 @@ candyImgs[1].src = spiralUrl;
 candyImgs[2].src = marshUrl;
 candyImgs[3].src = rainbowMarshUrl;
 candyImgs[4].src = donutUrl;
+candyImgs[5].src = candyUrl;
+candyImgs[6].src = heartUrl;
 const userVents = []; // double-tap drills a magma vent at that spot
 let lastTap = -10,
   lastTapX = 0,
@@ -680,7 +686,7 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: src.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
-        candy: (Math.random() * 5) | 0, // rainbow: which candy sprite
+        candy: (Math.random() * 7) | 0, // rainbow: which candy sprite
         spin: (Math.random() - 0.5) * 4, // tumble rate
       });
       if (shards.length >= MAX_SHARDS) break;
@@ -710,7 +716,7 @@ function render(t, dt) {
         phase: Math.random() * Math.PI * 2,
         glyph: cell.crystal,
         pc: PASTELS[(Math.random() * PASTELS.length) | 0], // light-theme tint
-        candy: (Math.random() * 5) | 0,
+        candy: (Math.random() * 7) | 0,
         spin: (Math.random() - 0.5) * 4,
       });
     }
