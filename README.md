@@ -63,6 +63,21 @@ docker pull ghcr.io/eetu/logo:latest
 > First publish only: make the package public once in the repo's
 > Packages → package settings (ghcr packages default to private).
 
+### Optional analytics
+
+Off by default. Set both variables and nginx adds a
+[Liwan](https://liwan.dev) tracker before `</head>`:
+
+```sh
+docker run --rm -p 8080:8080 \
+  -e LIWAN_SCRIPT_URL=https://liwan.example.com/script.js \
+  -e LIWAN_ENTITY=logo \
+  invinite-logo
+```
+
+Liwan sets no cookies. A missing or malformed value disables tracking with a
+log line (`docker/40-liwan-tracker.sh`); it never stops the page from serving.
+
 ## How it's made
 
 Built with the **ascii-artist** skill from
