@@ -17,4 +17,6 @@ RUN node .yarn/releases/yarn-*.cjs build
 FROM nginxinc/nginx-unprivileged:alpine
 COPY default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# Optional analytics, off unless LIWAN_SCRIPT_URL + LIWAN_ENTITY are set.
+COPY --chmod=755 docker/40-liwan-tracker.sh /docker-entrypoint.d/
 EXPOSE 8080
