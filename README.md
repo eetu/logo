@@ -80,6 +80,35 @@ docker run --rm -p 8080:8080 \
 Liwan sets no cookies. A missing or malformed value disables tracking with a
 log line (`docker/40-liwan-tracker.sh`); it never stops the page from serving.
 
+### Optional project list
+
+Mount a `projects.json` at the web root and the page shows those projects as
+ice shards orbiting the mark, plus a list of links along the bottom
+(`src/showcase.js`). Without the file the page is just the mark.
+
+```json
+{
+  "projects": [
+    {
+      "name": "dice",
+      "title": "dice",
+      "description": "Multiplayer 3D dice",
+      "url": "https://dice.invinite.tech/"
+    }
+  ]
+}
+```
+
+```sh
+docker run --rm -p 8080:8080 \
+  -v "$PWD/projects.json:/usr/share/nginx/html/projects.json:ro" \
+  invinite-logo
+```
+
+On invinite.tech the platform builds this file from each project's `showcase:`
+block. On a touch screen the first tap on a shard shows its name, the second
+opens it.
+
 ## How it's made
 
 Built with the **ascii-artist** skill from
