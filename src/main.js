@@ -888,6 +888,7 @@ function unlockAudio() {
 function toggleRainbow() {
   rainbow = !rainbow;
   document.body.style.background = rainbow ? LIGHT_BG : DARK_BG;
+  document.body.dataset.theme = rainbow ? "light" : "dark"; // showcase text colour
   if (reduced) render(INTRO, 0);
 }
 function fireKonami() {
@@ -1078,10 +1079,15 @@ function togglePanel() {
   }
 }
 
+// The settings panel and the project links (showcase.js, marked data-ui) take
+// their own clicks: a tap on them must not also wow, spin or start a gesture.
+const isUi = (el) =>
+  (panelEl && panelEl.contains(el)) || !!el.closest?.("[data-ui]");
+
 window.addEventListener(
   "pointerdown",
   (e) => {
-    if (panelEl && panelEl.contains(e.target)) return; // let the sliders work
+    if (isUi(e.target)) return; // let the sliders and the project links work
     e.preventDefault();
     unlockAudio();
     gdown = true;
@@ -1106,7 +1112,7 @@ window.addEventListener(
 window.addEventListener(
   "pointermove",
   (e) => {
-    if (panelEl && panelEl.contains(e.target)) return; // don't tilt while tweaking
+    if (isUi(e.target)) return; // don't tilt while tweaking or over a link
     if (!reduced) {
       pnx = clamp((e.clientX / vw - 0.5) * 2, -1, 1); // gear leans toward pointer
       pny = clamp((e.clientY / vh - 0.5) * 2, -1, 1);
