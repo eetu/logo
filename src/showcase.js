@@ -12,6 +12,10 @@
 // upright — so the shards clear the mark and stay on screen at any size.
 
 const GLYPHS = ["❆", "❅", "✦", "✳", "❄"];
+// Candy mode (R, main.js) recolours the mark as sweets; the shards follow with
+// the same family of glyphs as its sparkles, each in its own pastel.
+const CANDY = ["♥", "★", "✿", "❀", "✦"];
+const CANDY_TINT = ["#ff7eb6", "#b18cff", "#4fc2a0", "#ffa24f", "#5fb0ff"];
 const FROST = ["·", "+", "*", "◦", "❅", "✦"];
 const PERIOD = 150; // seconds per lap
 const MARGIN = 34; // px kept between a shard and the screen edge
@@ -115,6 +119,7 @@ function build(projects) {
     const glyph = document.createElement("span");
     glyph.className = "glyph";
     glyph.style.animationDelay = `${-((i * 1.7) % 5)}s`;
+    glyph.style.setProperty("--tint", CANDY_TINT[i % CANDY_TINT.length]);
     glyph.textContent = GLYPHS[i % GLYPHS.length];
     const label = document.createElement("span");
     label.className = "label";
@@ -150,6 +155,19 @@ function build(projects) {
   });
 
   document.body.append(orbit, nav);
+
+  // main.js sets body[data-theme] when candy mode toggles.
+  const theme = () => {
+    const set = document.body.dataset.theme === "light" ? CANDY : GLYPHS;
+    orbit.querySelectorAll(".glyph").forEach((g, i) => {
+      g.textContent = set[i % set.length];
+    });
+  };
+  new MutationObserver(theme).observe(document.body, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  theme();
 
   // Ellipse from the mark's size (main.js: G = 0.62 × the shorter side) and the
   // room left on screen. A shard and its name must never run off the screen or
