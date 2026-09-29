@@ -87,10 +87,22 @@
         --ice-dim: #7f93b5;
         --ice-glow: rgba(120, 180, 255, 0.55);
       }
+      /* Candy mode: soft violet text, and each shard in its own pastel. */
       body[data-theme="light"] {
-        --ice: #2b3a55;
-        --ice-dim: #56627a;
-        --ice-glow: rgba(255, 255, 255, 0.9);
+        --ice: #5b4a7a;
+        --ice-dim: #8a7aa3;
+        --ice-glow: rgba(255, 255, 255, 0.95);
+      }
+      body[data-theme="light"] .glyph {
+        color: var(--tint);
+        text-shadow:
+          0 0 6px rgba(255, 255, 255, 0.95),
+          0 0 12px color-mix(in srgb, var(--tint) 45%, transparent);
+      }
+      body[data-theme="light"] .shard.lit .glyph {
+        text-shadow:
+          0 0 8px rgba(255, 255, 255, 1),
+          0 0 22px color-mix(in srgb, var(--tint) 70%, transparent);
       }
       .orbit,
       .projects {
