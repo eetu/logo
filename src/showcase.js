@@ -37,9 +37,7 @@ function frostIn(el, text, delay = 0) {
   setTimeout(function tick() {
     step++;
     el.textContent = chars
-      .map((c, i) =>
-        step >= settleAt[i] ? c : FROST[(Math.random() * FROST.length) | 0],
-      )
+      .map((c, i) => (step >= settleAt[i] ? c : FROST[(Math.random() * FROST.length) | 0]))
       .join("");
     if (step < 21) setTimeout(tick, 45);
   }, delay);
@@ -181,19 +179,14 @@ function build(projects) {
     // Many projects with descriptions make a tall list, which would push up
     // into the mark; past a quarter of the screen it drops to titles only.
     nav.classList.remove("compact");
-    if (nav.getBoundingClientRect().height > vh * 0.25)
-      nav.classList.add("compact");
+    if (nav.getBoundingClientRect().height > vh * 0.25) nav.classList.add("compact");
     const list = nav.getBoundingClientRect();
     cx = vw / 2;
     cy = vh / 2;
     const listAtSide = list.left > cx;
     const bottom = listAtSide ? vh : list.top;
     const right = listAtSide ? list.left : vw;
-    ry = Math.min(
-      g * 0.8,
-      cy - MARGIN - LABEL_H,
-      bottom - cy - MARGIN - LABEL_H,
-    );
+    ry = Math.min(g * 0.8, cy - MARGIN - LABEL_H, bottom - cy - MARGIN - LABEL_H);
     rx = Math.min(g * 0.9, cx - MARGIN, right - cx - MARGIN);
     edge = right;
   }
@@ -234,8 +227,7 @@ function build(projects) {
         const half = s.label.offsetWidth / 2;
         shift = Math.max(0, 8 + half - x) + Math.min(0, vw - 8 - half - x);
       }
-      s.label.style.translate =
-        side === "above" || side === "below" ? `${shift}px 0` : "";
+      s.label.style.translate = side === "above" || side === "below" ? `${shift}px 0` : "";
     }
     if (!reduced) requestAnimationFrame(place);
   }
@@ -245,8 +237,7 @@ function build(projects) {
 fetch("/projects.json", { cache: "no-cache" })
   .then((r) => (r.ok ? r.json() : null))
   .then((data) => {
-    const projects =
-      (data && Array.isArray(data.projects) && data.projects) || [];
+    const projects = (data && Array.isArray(data.projects) && data.projects) || [];
     if (projects.length) build(projects);
   })
   .catch(() => {});

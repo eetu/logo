@@ -24,14 +24,12 @@ manifest). Built with [Vite](https://vite.dev); package manager is **yarn**
 ```sh
 yarn install
 yarn dev             # local dev server with HMR
-yarn validate        # eslint + prettier check (lint + format)
-yarn lint:fix        # eslint --fix
-yarn format:fix      # prettier --write
+yarn validate        # biome check (formatting, lint, import order)
+yarn lint:fix        # biome check --write
 ```
 
-Linting uses the shared
-[`@anarkisti/eslint-config`](https://github.com/eetu/eslint-config) `web` preset
-(browser globals).
+Formatting and linting use the shared
+[`@anarkisti/biome-config`](https://github.com/eetu/biome-config) preset.
 
 ## Build
 

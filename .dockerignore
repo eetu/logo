@@ -9,5 +9,4 @@ dist
 _*.png
 .gitignore
 .dockerignore
-.prettierrc
-.prettierignore
+biome.json

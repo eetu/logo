@@ -144,6 +144,7 @@
         will-change: transform;
         -webkit-tap-highlight-color: transparent;
       }
+      /* biome-ignore lint/style/noDescendingSpecificity: the light-theme rule above is meant to win */
       .glyph {
         font-size: 20px;
         text-shadow: 0 0 10px var(--ice-glow);
@@ -180,6 +181,7 @@
       }
       /* .lit: this shard or its list entry is hovered, focused, or was tapped
          once on a touch screen (showcase.js). */
+      /* biome-ignore lint/style/noDescendingSpecificity: the light-theme rule above is meant to win */
       .shard.lit .glyph {
         scale: 1.5;
         text-shadow:
