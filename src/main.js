@@ -55,9 +55,7 @@ for (let r = 0; r < ROWS; r++) {
     // crystalline fingers: frost reaches inward faster at some angles, so
     // the freeze front is ragged rather than a clean radial ring
     const fingers =
-      0.5 * Math.sin(a2 * 9) +
-      0.28 * Math.sin(a2 * 23 + 1.7) +
-      0.22 * Math.sin(a2 * 5 - 0.6);
+      0.5 * Math.sin(a2 * 9) + 0.28 * Math.sin(a2 * 23 + 1.7) + 0.22 * Math.sin(a2 * 5 - 0.6);
     cells.push({
       c,
       r,
@@ -233,8 +231,8 @@ function layout() {
   const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
   canvas.width = Math.round(vw * dpr);
   canvas.height = Math.round(vh * dpr);
-  canvas.style.width = vw + "px";
-  canvas.style.height = vh + "px";
+  canvas.style.width = `${vw}px`;
+  canvas.style.height = `${vh}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = "high"; // smoother sprite up/downscaling
 
@@ -401,13 +399,7 @@ function render(t, dt) {
       if (bl.ny < -0.3) bl.ny = 1.3;
       else if (bl.ny > 1.3) bl.ny = -0.3;
       const rad = bl.r * G * (1 + 0.12 * Math.sin(t * 0.4 + bl.ph));
-      ctx.drawImage(
-        bl.sprite,
-        bl.nx * vw - rad,
-        bl.ny * vh - rad,
-        rad * 2,
-        rad * 2,
-      );
+      ctx.drawImage(bl.sprite, bl.nx * vw - rad, bl.ny * vh - rad, rad * 2, rad * 2);
     }
   }
 
@@ -458,10 +450,8 @@ function render(t, dt) {
     }
     const appear = clamp((cov - cell.reveal) / 0.08, 0, 1);
     const ndH = cell.nx * Hx + cell.ny * Hy + cell.nz * Hz;
-    const glint = reduced || ndH <= 0 ? 0 : Math.pow(ndH, SHINE);
-    const tw = reduced
-      ? 0
-      : Math.pow(Math.max(0, Math.sin(t * 1.7 + cell.phase)), 14) * 0.7;
+    const glint = reduced || ndH <= 0 ? 0 : ndH ** SHINE;
+    const tw = reduced ? 0 : Math.max(0, Math.sin(t * 1.7 + cell.phase)) ** 14 * 0.7;
     // degrade/refresh: `since` is seconds since the sweep last refroze
     // this cell. Magma pools grow outward from the cycle's seed points as
     // `since` rises (radius expands); flash is the brief crystallization
@@ -490,8 +480,7 @@ function render(t, dt) {
           if (dd < best) best = dd;
         }
         const dist = Math.sqrt(best);
-        if (dist < radius)
-          heat = clamp((radius - dist) / MAGMA_EDGE, 0, 1) * ramp;
+        if (dist < radius) heat = clamp((radius - dist) / MAGMA_EDGE, 0, 1) * ramp;
       }
       // hand-drilled vents (double-tap): glow from when drilled until the
       // sweep next reaches this cell (age >= since), which freezes them
@@ -508,10 +497,7 @@ function render(t, dt) {
       // Konami eruption: floods every cell (textured by rnd), then the
       // sweep freezes it back over — same age < since rule as the vents
       if (eAge >= 0 && eAge < since)
-        heat = Math.max(
-          heat,
-          smoothstep(0, 0.4, eAge) * (0.6 + cell.rnd * 0.4),
-        );
+        heat = Math.max(heat, smoothstep(0, 0.4, eAge) * (0.6 + cell.rnd * 0.4));
     }
     const sparkle = Math.max(glint, tw) * (1 - heat * 0.8) + flash * 0.9;
     cell.bloom = sparkle > BLOOM_TH ? sparkle - BLOOM_TH : 0; // cold halo
@@ -519,11 +505,7 @@ function render(t, dt) {
     // depth shading: nearer (s>1) brighter, farther dimmer
     const depth = clamp((cell.s - 0.9) * 1.4, 0, 1);
     const lp = clamp(
-      (0.26 +
-        cell.rN * 0.2 +
-        (cell.rnd - 0.5) * 0.1 +
-        sparkle * 0.65 +
-        depth * 0.12) *
+      (0.26 + cell.rN * 0.2 + (cell.rnd - 0.5) * 0.1 + sparkle * 0.65 + depth * 0.12) *
         (1 - heat * 0.35), // ice base dims as the crust melts away
       0,
       1,
@@ -531,9 +513,7 @@ function render(t, dt) {
     // base surface colour — frost palette, or a swirling pastel rainbow in
     // the R-mode easter egg (hue sweeps around the gear + over time)
     const hue = (cell.ang + cell.rN * 0.25 + t * 0.12) % 1;
-    const base = rainbow
-      ? hslColor(hue, 0.5, clamp(0.46 + lp * 0.28, 0, 0.74))
-      : iceColor(lp);
+    const base = rainbow ? hslColor(hue, 0.5, clamp(0.46 + lp * 0.28, 0, 0.74)) : iceColor(lp);
     let rr, gg, bb;
     if (heat > 0.001) {
       // magma follows the theme: red normally, but a vivid same-hue flare
@@ -555,8 +535,7 @@ function render(t, dt) {
       gg = mix(gg, 197, flash) | 0;
       bb = mix(bb, 74, flash) | 0;
     }
-    let alpha =
-      appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) + heat * 0.35;
+    let alpha = appear * (0.78 + 0.22 * breathe) * (0.7 + 0.3 * depth) + heat * 0.35;
     if (rainbow) alpha *= 1.5; // pastels need to be more opaque on light bg
     ctx.globalAlpha = Math.min(1, alpha);
     const spark = sparkle > 0.42;
@@ -607,9 +586,7 @@ function render(t, dt) {
         x: px,
         y: py,
         z: -src.relief * dome - 6,
-        vx:
-          Math.sign(px || 1) * (5 + Math.random() * 16) +
-          (Math.random() - 0.5) * 10,
+        vx: Math.sign(px || 1) * (5 + Math.random() * 16) + (Math.random() - 0.5) * 10,
         vy: -(6 + Math.random() * 16), // slight initial rise
         life: 1,
         ttl: 2.2 + Math.random() * 2,
@@ -736,7 +713,7 @@ function render(t, dt) {
     }
     const twk = 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + s.phase)); // sparkle
     const candy = rainbow && candyImgs[s.candy];
-    if (candy && candy.complete && candy.naturalWidth) {
+    if (candy?.complete && candy.naturalWidth) {
       // rainbow theme: a tumbling cotton candy / lollipop / marshmallow
       const w = fontSize * 1.7;
       const h = (w * candy.naturalHeight) / candy.naturalWidth;
@@ -778,8 +755,8 @@ function render(t, dt) {
       for (let i = 0; i < RB.length; i++) {
         const off = (i - (RB.length - 1) / 2) * sw;
         const g = ctx.createLinearGradient(tx, ty, ux, uy);
-        g.addColorStop(0, RB[i] + "00"); // transparent at the tail
-        g.addColorStop(1, RB[i] + "aa"); // ~0.67 alpha behind the sprite
+        g.addColorStop(0, `${RB[i]}00`); // transparent at the tail
+        g.addColorStop(1, `${RB[i]}aa`); // ~0.67 alpha behind the sprite
         ctx.strokeStyle = g;
         ctx.beginPath();
         for (let k = 0; k <= 16; k++) {
@@ -899,17 +876,17 @@ function fireKonami() {
 }
 
 // keyboard: R = rainbow, classic Konami = erupt
+// biome-ignore format: the code reads as its sequence
 const KONAMI = [
   "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
   "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a",
-]; // prettier-ignore
+];
 window.addEventListener("keydown", (e) => {
   unlockAudio();
   if (e.key === "r" || e.key === "R") toggleRainbow();
   if (e.key === "s" || e.key === "S") togglePanel();
   if (e.key === "Escape" && panelEl) togglePanel();
-  konamiAt =
-    e.key === KONAMI[konamiAt] ? konamiAt + 1 : e.key === KONAMI[0] ? 1 : 0;
+  konamiAt = e.key === KONAMI[konamiAt] ? konamiAt + 1 : e.key === KONAMI[0] ? 1 : 0;
   if (konamiAt === KONAMI.length) {
     konamiAt = 0;
     fireKonami();
@@ -941,8 +918,7 @@ function tap(x, y) {
         bc = cell;
       }
     }
-    if (bc && userVents.length < 12)
-      userVents.push({ c: bc.c, r: bc.r, t0: animT });
+    if (bc && userVents.length < 12) userVents.push({ c: bc.c, r: bc.r, t0: animT });
     lastTap = -10; // consume so the next tap starts a fresh pair
   } else {
     lastTap = animT;
@@ -988,20 +964,25 @@ function isRewind(pts) {
     if (d < -Math.PI) d += 2 * Math.PI;
     sweep += d;
     prev = ang;
-    if (sweep > hi) ((hi = sweep), (minAfterHi = sweep));
-    if (sweep < lo) ((lo = sweep), (maxAfterLo = sweep));
+    if (sweep > hi) {
+      hi = sweep;
+      minAfterHi = sweep;
+    }
+    if (sweep < lo) {
+      lo = sweep;
+      maxAfterLo = sweep;
+    }
     if (sweep < minAfterHi) minAfterHi = sweep;
     if (sweep > maxAfterLo) maxAfterLo = sweep;
   }
   // a peak then a return (CW→CCW), or a trough then a return (CCW→CW)
-  return (
-    (hi >= F && hi - minAfterHi >= F) || (-lo >= F && maxAfterLo - lo >= F)
-  );
+  return (hi >= F && hi - minAfterHi >= F) || (-lo >= F && maxAfterLo - lo >= F);
 }
 
 // --- hidden settings panel (press S, or pull down from the top edge) ---
 // Each tunable is a `let` above; the schema reads/writes it via closures so
 // changes apply live. Compact single-line rows (label · slider · value).
+// biome-ignore format: one tunable per row
 const TUNABLES = [
   { l: "light orbit", s: 4, x: 30, st: 0.5, g: () => SWEEP, p: (v) => (SWEEP = v) },
   // these read as intuitive 0..1 "amount" (right/bigger = more) — the
@@ -1022,7 +1003,7 @@ const TUNABLES = [
   { l: "shake", s: 0, x: 70, st: 2, g: () => SHAKE_AMP, p: (v) => (SHAKE_AMP = v) },
   { l: "flakes", s: 20, x: 320, st: 10, g: () => MAX_SHARDS, p: (v) => (MAX_SHARDS = v) },
   { l: "vapour", s: 0, x: 2, st: 0.1, g: () => PQ_MUL, p: (v) => (PQ_MUL = v) },
-]; // prettier-ignore
+];
 let panelEl = null;
 function buildPanel() {
   const wrap = document.createElement("div");
@@ -1034,8 +1015,7 @@ function buildPanel() {
     "box-shadow:0 6px 24px rgba(0,0,0,.5)";
   const head = document.createElement("div");
   head.textContent = "tweak · tap to close";
-  head.style.cssText =
-    "opacity:.6;margin-bottom:6px;cursor:pointer;user-select:none";
+  head.style.cssText = "opacity:.6;margin-bottom:6px;cursor:pointer;user-select:none";
   head.addEventListener("click", togglePanel);
   wrap.appendChild(head);
   const repaint = () => {
@@ -1081,8 +1061,7 @@ function togglePanel() {
 
 // The settings panel and the project links (showcase.js, marked data-ui) take
 // their own clicks: a tap on them must not also wow, spin or start a gesture.
-const isUi = (el) =>
-  (panelEl && panelEl.contains(el)) || !!el.closest?.("[data-ui]");
+const isUi = (el) => panelEl?.contains(el) || !!el.closest?.("[data-ui]");
 
 window.addEventListener(
   "pointerdown",
@@ -1101,8 +1080,7 @@ window.addEventListener(
     if (DOE && typeof DOE.requestPermission === "function")
       DOE.requestPermission()
         .then((s) => {
-          if (s === "granted")
-            window.addEventListener("deviceorientation", onTilt);
+          if (s === "granted") window.addEventListener("deviceorientation", onTilt);
         })
         .catch(() => {});
   },
@@ -1135,20 +1113,14 @@ window.addEventListener("pointerup", (e) => {
     dist = Math.hypot(dx, dy);
   if (isRewind(gpts)) {
     toggleRainbow(); // CW+CCW loop → rainbow
-  } else if (
-    gy0 < 60 &&
-    dy > Math.min(vw, vh) * 0.25 &&
-    Math.abs(dy) > Math.abs(dx) * 1.5
-  ) {
+  } else if (gy0 < 60 && dy > Math.min(vw, vh) * 0.25 && Math.abs(dy) > Math.abs(dx) * 1.5) {
     togglePanel(); // pull down from the top edge → settings
   } else if (dist >= Math.min(vw, vh) * 0.08) {
     // a swipe → next Konami direction
-    const dir =
-      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "R" : "L") : dy > 0 ? "D" : "U";
+    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "R" : "L") : dy > 0 ? "D" : "U";
     if (animT - lastSwipe > 1.5) swipeIdx = 0; // timeout resets the sequence
     lastSwipe = animT;
-    swipeIdx =
-      dir === SWIPE[swipeIdx] ? swipeIdx + 1 : dir === SWIPE[0] ? 1 : 0;
+    swipeIdx = dir === SWIPE[swipeIdx] ? swipeIdx + 1 : dir === SWIPE[0] ? 1 : 0;
     if (swipeIdx === SWIPE.length) {
       swipeIdx = 0;
       fireKonami();

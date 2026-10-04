@@ -25,9 +25,7 @@ const HEAT_LO = [70, 6, 4];
 const HEAT_MID = [180, 22, 12];
 const HEAT_HI = [255, 66, 30];
 export const heatColor = (p) =>
-  p < 0.5
-    ? lerpRGB(HEAT_LO, HEAT_MID, p * 2)
-    : lerpRGB(HEAT_MID, HEAT_HI, (p - 0.5) * 2);
+  p < 0.5 ? lerpRGB(HEAT_LO, HEAT_MID, p * 2) : lerpRGB(HEAT_MID, HEAT_HI, (p - 0.5) * 2);
 
 // rainbow easter egg (press R): light theme + pastel hue ramp
 export const DARK_BG =
@@ -39,10 +37,11 @@ export const LIGHT_BG =
 
 // "Unicorn" pastel palette (lavender→pink→coral→butter→mint→sky→seafoam→peach)
 // — drives the light-theme blobs, shards and sparkles.
+// biome-ignore format: five swatches per row
 export const PASTELS = [
   "#c9b6f2", "#f7c3e0", "#f6a6a0", "#f7e7a0", "#b9efc8",
   "#aee3f5", "#a3e0cf", "#f8d2a8", "#f4a9c0", "#c7e6f7",
-]; // prettier-ignore
+];
 const hue2 = (p, q, t) => {
   if (t < 0) t += 1;
   if (t > 1) t -= 1;
