@@ -17,7 +17,7 @@
     "@anarkisti/biome-config": "^1.0.0",
     "@biomejs/biome": "^2.5.15",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1",
+    "vite": "^8.3.2",
     "vite-plugin-singlefile": "^2.3.0"
   }
 }
