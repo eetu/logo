@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@anarkisti/biome-config": "^1.0.0",
-    "@biomejs/biome": "^2.5.15",
+    "@biomejs/biome": "^2.6.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.4",
     "vite-plugin-singlefile": "^2.3.4"
