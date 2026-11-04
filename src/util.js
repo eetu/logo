@@ -1,6 +1,6 @@
 // Pure math + colour helpers and the ice/heat palettes.
 
-export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+export const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 export const mix = (a, b, t) => a + (b - a) * t;
 export const smoothstep = (e0, e1, x) => {
   const t = clamp((x - e0) / (e1 - e0), 0, 1);
